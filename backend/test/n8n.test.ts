@@ -129,12 +129,12 @@ test.describe('N8N Notifier Integration', () => {
   });
 
   test('7. Payload does NOT contain secrets', async (t) => {
-    env.AI_API_KEY = 'secret-ai-key-123';
+    env.AI_API_KEY = 'TEST_ONLY_NOT_A_SECRET';
     await completeConversation('n8n_test_7');
     
     const bodyString = fetchMock.mock.calls[0].arguments[1].body;
     assert.ok(!bodyString.includes('test-n8n-secret'));
-    assert.ok(!bodyString.includes('secret-ai-key-123'));
+    assert.ok(!bodyString.includes('TEST_ONLY_NOT_A_SECRET'));
     
     env.AI_API_KEY = undefined;
   });
