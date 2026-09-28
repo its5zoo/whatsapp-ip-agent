@@ -1,0 +1,40 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Build output
+dist/
+build/
+.next/
+
+# Temporary files
+tmp/
+temp/
+
+# Database
+*.sql
+*.dump
+
+# n8n local data
+n8n/data/
+
+# Docker
+docker-data/
+
+# Testing
+coverage/
