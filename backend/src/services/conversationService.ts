@@ -2,6 +2,9 @@ import { conversationRepository } from '../db/repositories/conversationRepositor
 import { leadRepository } from '../db/repositories/leadRepository';
 import { processMessage } from '../engine/engine';
 import { ConversationState, ConversationData } from '../engine/types';
+import { aiFallbackService } from '../ai/aiFallbackService';
+import { env } from '../config/env';
+import { QUESTIONNAIRE } from '../engine/questions';
 
 export class ConversationService {
   async handleMessage(channel: string, externalUserId: string, message: string): Promise<string> {
@@ -20,7 +23,30 @@ export class ConversationService {
     };
 
     // 3. Call processMessage (engine logic)
-    const result = await processMessage(state, message);
+    let result = processMessage(state, message);
+
+    // AI Fallback: only for 'choice' questions where deterministic engine rejected input
+    const currentQId = state.currentQuestionId || 'main_menu';
+    const currentQuestion = QUESTIONNAIRE[currentQId];
+
+    if (
+      result.response.startsWith('Invalid option') &&
+      currentQuestion?.type === 'choice' &&
+      env.AI_API_KEY
+    ) {
+      const aiResult = await aiFallbackService.interpretChoice(
+        message,
+        currentQuestion.text,
+        currentQuestion.options
+      );
+
+      if (aiResult && aiResult.confidence >= env.AI_CONFIDENCE_THRESHOLD) {
+        // Validation check happens inside the aiFallbackService already,
+        // but just to be sure we can check it again, or trust the service.
+        // Re-run the engine with the AI-mapped option ID
+        result = processMessage(state, aiResult.optionId);
+      }
+    }
 
     // 4. Persist the returned state
     await conversationRepository.updateState(
