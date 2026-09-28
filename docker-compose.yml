@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - whatsapp_agent_network
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.40.7
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:?POSTGRES_DB is required}
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:?POSTGRES_USER is required}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY is required}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - whatsapp_agent_network
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+  n8n_data:
+
+networks:
+  whatsapp_agent_network:
+    driver: bridge
