@@ -1,0 +1,120 @@
+{
+  "name": "New Lead Notification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-lead",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "new-lead-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$node[\"Webhook Trigger\"].json[\"headers\"][\"x-webhook-secret\"]}}",
+              "value2": "YOUR_SECRET_HERE"
+            }
+          ]
+        }
+      },
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "leadId",
+              "value": "={{$node[\"Webhook Trigger\"].json[\"body\"][\"lead\"][\"id\"]}}"
+            },
+            {
+              "name": "name",
+              "value": "={{$node[\"Webhook Trigger\"].json[\"body\"][\"lead\"][\"name\"]}}"
+            },
+            {
+              "name": "email",
+              "value": "={{$node[\"Webhook Trigger\"].json[\"body\"][\"lead\"][\"email\"]}}"
+            },
+            {
+              "name": "flowType",
+              "value": "={{$node[\"Webhook Trigger\"].json[\"body\"][\"lead\"][\"flowType\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Format Lead Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        280
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "No-Op (Placeholder)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        850,
+        280
+      ],
+      "notesInFlow": true,
+      "notes": "Replace this with Gmail, Slack, Google Sheets, etc."
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Secret": {
+      "main": [
+        [
+          {
+            "node": "Format Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Lead Data": {
+      "main": [
+        [
+          {
+            "node": "No-Op (Placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

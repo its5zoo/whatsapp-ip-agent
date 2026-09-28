@@ -5,6 +5,7 @@ import { ConversationState, ConversationData } from '../engine/types';
 import { aiFallbackService } from '../ai/aiFallbackService';
 import { env } from '../config/env';
 import { QUESTIONNAIRE } from '../engine/questions';
+import { n8nNotifier } from './n8nNotifier';
 
 export class ConversationService {
   async handleMessage(channel: string, externalUserId: string, message: string): Promise<string> {
@@ -72,7 +73,14 @@ export class ConversationService {
         answers: data as any
       };
 
-      await leadRepository.upsertFromConversation(conversation.id, leadData);
+      const lead = await leadRepository.upsertFromConversation(conversation.id, leadData);
+
+      // Fire n8n only if this is the moment the conversation became completed
+      if (!conversation.isCompleted) {
+        n8nNotifier.notifyNewLead(lead).catch(err => {
+          // Fire-and-forget: already logged inside notifier, but catch here just in case
+        });
+      }
     }
 
     // 6. Return response
