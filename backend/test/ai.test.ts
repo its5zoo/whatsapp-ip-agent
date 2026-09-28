@@ -133,4 +133,28 @@ test.describe('AI Fallback', () => {
     assert.ok(response.includes('Invalid option.'));
   });
 
+  test('12. AI provider failure (HTTP 500)', async (t) => {
+    test.mock.method(globalThis, 'fetch', async () => {
+      return {
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error'
+      } as Response;
+    });
+
+    const response = await conversationService.handleMessage('simulator', 'test_user_12', 'I want to protect my brand name');
+    assert.ok(response.includes('Invalid option.'));
+  });
+
+  test('13. AI returns malformed JSON', async (t) => {
+    test.mock.method(globalThis, 'fetch', async () => {
+      return {
+        ok: true,
+        json: async () => { throw new Error('Unexpected token') }
+      } as any;
+    });
+
+    const response = await conversationService.handleMessage('simulator', 'test_user_13', 'I want to protect my brand name');
+    assert.ok(response.includes('Invalid option.'));
+  });
 });
