@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Conversation {
+  id                String    @id @default(uuid())
+  channel           String
+  externalUserId    String    @map("external_user_id")
+  currentQuestionId String?   @map("current_question_id")
+  data              Json      @default("{}")
+  isCompleted       Boolean   @default(false) @map("is_completed")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  lead              Lead?
+
+  @@unique([channel, externalUserId])
+  @@index([isCompleted])
+  @@map("conversations")
+}
+
+model Lead {
+  id              String    @id @default(uuid())
+  conversationId  String    @unique @map("conversation_id")
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+
+  name            String
+  organization    String
+  email           String
+  mobile          String
+  city            String
+  preferredComm   String    @map("preferred_comm")
+  phoneCallTime   String?   @map("phone_call_time")
+
+  flowType        String    @map("flow_type")
+  answers         Json      @default("{}")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([flowType])
+  @@index([email])
+  @@map("leads")
+}

@@ -7,14 +7,18 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsx --test test/**/*.test.ts"
+    "test": "tsx --test test/**/*.test.ts",
+    "prisma:migrate": "prisma migrate dev --name init --schema src/prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema src/prisma/schema.prisma"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.2"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
+    "prisma": "^6.19.3",
     "tsx": "^4.7.2",
     "typescript": "^5.4.5"
   }
