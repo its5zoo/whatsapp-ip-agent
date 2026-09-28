@@ -29,7 +29,7 @@ ${questionText}
 
 User said: "${truncatedMessage}"`;
 
-    const aiResult = await aiProvider.callGemini(systemInstruction, prompt);
+    const aiResult = await aiProvider.callModel(systemInstruction, prompt);
 
     if (!aiResult) {
       return null;
