@@ -26,6 +26,7 @@ describe('Database and Service Layer Integration', () => {
   });
 
   test('2. Conversation creation via service', async () => {
+    await conversationService.handleMessage('simulator', 'user1', 'hi');
     const res = await conversationService.handleMessage('simulator', 'user1', 'hi'); // invalid input for main menu
     assert.ok(res.includes('Invalid option'));
 
@@ -54,6 +55,7 @@ describe('Database and Service Layer Integration', () => {
   });
 
   test('4. Missing conversation returns null (handled by service creating it)', async () => {
+    await conversationService.handleMessage('simulator', 'user2', 'hi');
     const res = await conversationService.handleMessage('simulator', 'user2', '1');
     const conv = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } }

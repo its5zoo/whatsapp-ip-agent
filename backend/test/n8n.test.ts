@@ -32,6 +32,7 @@ test.describe('N8N Notifier Integration', () => {
 
   // Helper to complete a conversation deterministically
   async function completeConversation(userId: string) {
+    await conversationService.handleMessage('simulator', userId, 'hi');
     await conversationService.handleMessage('simulator', userId, '2'); // -> trademark_what
     await conversationService.handleMessage('simulator', userId, '1'); // -> trademark_desc
     await conversationService.handleMessage('simulator', userId, 'My Cool Brand'); // -> trademark_usage

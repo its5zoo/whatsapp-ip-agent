@@ -23,6 +23,11 @@ describe('Simulator REST API', () => {
   });
 
   test('1. Valid message request & 2. New simulator user & 6. Database persistence', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/simulator/message',
+      payload: { userId: 'sim_new', message: 'hi' }
+    });
     const response = await app.inject({
       method: 'POST',
       url: '/simulator/message',
@@ -56,6 +61,11 @@ describe('Simulator REST API', () => {
 
   test('4. Two different simulator users remain isolated', async () => {
     // Send to a different user
+    await app.inject({
+      method: 'POST',
+      url: '/simulator/message',
+      payload: { userId: 'sim_other', message: 'hi' }
+    });
     const response = await app.inject({
       method: 'POST',
       url: '/simulator/message',

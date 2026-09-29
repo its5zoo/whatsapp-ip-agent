@@ -21,6 +21,7 @@ test.describe('AI Fallback', () => {
   test('1. Valid numbered input does NOT invoke AI', async (t) => {
     const mockCallGemini = test.mock.method(aiProvider, 'callModel');
 
+    await conversationService.handleMessage('simulator', 'test_user_1', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_1', '1');
 
     assert.strictEqual(mockCallGemini.mock.callCount(), 0);
@@ -29,6 +30,7 @@ test.describe('AI Fallback', () => {
   test('2. Global command (HELP) does NOT invoke AI', async (t) => {
     const mockCallGemini = test.mock.method(aiProvider, 'callModel');
 
+    await conversationService.handleMessage('simulator', 'test_user_2', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_2', 'HELP');
 
     assert.strictEqual(mockCallGemini.mock.callCount(), 0);
@@ -36,6 +38,7 @@ test.describe('AI Fallback', () => {
 
   test('3. Free-text question does NOT invoke AI', async (t) => {
     // Navigate to a free text question (trademark_desc)
+    await conversationService.handleMessage('simulator', 'test_user_3', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_3', '2'); // Trademark
     await conversationService.handleMessage('simulator', 'test_user_3', '1'); // Brand Name
 
@@ -54,6 +57,7 @@ test.describe('AI Fallback', () => {
       confidence: 0.9
     }));
 
+    await conversationService.handleMessage('simulator', 'test_user_4', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_4', 'I want to protect my brand name');
 
     assert.strictEqual(mockCallGemini.mock.callCount(), 1);
@@ -65,6 +69,7 @@ test.describe('AI Fallback', () => {
       confidence: 0.95
     }));
 
+    await conversationService.handleMessage('simulator', 'test_user_5', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_5', 'brand');
 
     assert.ok(response.includes('Q2. What do you want to protect?')); // trademark_what
@@ -76,6 +81,7 @@ test.describe('AI Fallback', () => {
       confidence: 0.5
     }));
 
+    await conversationService.handleMessage('simulator', 'test_user_6', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_6', 'brand');
 
     assert.ok(response.includes('Invalid option.'));
@@ -88,6 +94,7 @@ test.describe('AI Fallback', () => {
       confidence: 0.0
     }));
 
+    await conversationService.handleMessage('simulator', 'test_user_7', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_7', 'who are you?');
 
     assert.ok(response.includes('Invalid option.'));
@@ -99,6 +106,7 @@ test.describe('AI Fallback', () => {
       confidence: 0.95
     }));
 
+    await conversationService.handleMessage('simulator', 'test_user_8', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_8', 'hello');
 
     assert.ok(response.includes('Invalid option.'));
@@ -107,6 +115,7 @@ test.describe('AI Fallback', () => {
   test('9. AI timeout (null return)', async (t) => {
     test.mock.method(aiProvider, 'callModel', async () => null);
 
+    await conversationService.handleMessage('simulator', 'test_user_9', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_9', 'hello');
 
     assert.ok(response.includes('Invalid option.'));
@@ -118,6 +127,7 @@ test.describe('AI Fallback', () => {
       confidence: 1.5
     }));
 
+    await conversationService.handleMessage('simulator', 'test_user_10', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_10', 'patent');
 
     assert.ok(response.includes('Invalid option.'));
@@ -127,6 +137,7 @@ test.describe('AI Fallback', () => {
     env.AI_API_KEY = undefined; env.AI_PROVIDER = undefined;
     const mockCallGemini = test.mock.method(aiProvider, 'callModel');
 
+    await conversationService.handleMessage('simulator', 'test_user_11', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_11', 'I want to protect my brand name');
 
     assert.strictEqual(mockCallGemini.mock.callCount(), 0);
@@ -143,6 +154,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_12', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_12', 'I want to protect my brand name');
     assert.ok(response.includes('Invalid option.'));
   });
@@ -155,6 +167,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_13', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_13', 'I want to protect my brand name');
     assert.ok(response.includes('Invalid option.'));
   });
@@ -169,6 +182,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_14', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_14', 'brand');
 
     assert.strictEqual(fetchMock.mock.callCount(), 1);
@@ -201,6 +215,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_15', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_15', 'brand');
     assert.strictEqual(fetchMock.mock.callCount(), 2);
     assert.ok(response.includes('Q2. What do you want to protect?'));
@@ -216,6 +231,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_16', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_16', 'brand');
     assert.strictEqual(fetchMock.mock.callCount(), 2);
     assert.ok(response.includes('Invalid option.'));
@@ -231,6 +247,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_17', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_17', 'brand');
     assert.strictEqual(fetchMock.mock.callCount(), 1);
     assert.ok(response.includes('Invalid option.'));
@@ -247,6 +264,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_18_groq', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_18_groq', 'brand');
     assert.strictEqual(fetchMock.mock.callCount(), 1);
 
@@ -261,6 +279,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_18_gemini', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_18_gemini', 'brand');
     assert.strictEqual(fetchMock.mock.callCount(), 1);
   });
@@ -276,6 +295,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_19', 'hi');
     const response = await conversationService.handleMessage('simulator', 'test_user_19', 'brand');
     assert.ok(response.includes('Q2. What do you want to protect?')); // trademark_what
   });
@@ -291,6 +311,7 @@ test.describe('AI Fallback', () => {
       } as any;
     });
 
+    await conversationService.handleMessage('simulator', 'test_user_20', 'hi');
     await conversationService.handleMessage('simulator', 'test_user_20', 'brand');
 
     assert.strictEqual(fetchMock.mock.callCount(), 1);
@@ -315,6 +336,7 @@ test.describe('AI Fallback', () => {
     let fetchMock = test.mock.method(globalThis, 'fetch', async () => ({
       ok: false, status: 404, statusText: 'Not Found', text: async () => 'Not Found'
     }) as any);
+    await conversationService.handleMessage('simulator', 'test_user_21_404', 'hi');
     let response = await conversationService.handleMessage('simulator', 'test_user_21_404', 'brand');
     assert.ok(response.includes('Invalid option.'));
     assert.strictEqual(fetchMock.mock.callCount(), 1); // No retry
@@ -324,6 +346,7 @@ test.describe('AI Fallback', () => {
     fetchMock = test.mock.method(globalThis, 'fetch', async () => ({
       ok: false, status: 401, statusText: 'Unauthorized', text: async () => 'Unauthorized'
     }) as any);
+    await conversationService.handleMessage('simulator', 'test_user_21_401', 'hi');
     response = await conversationService.handleMessage('simulator', 'test_user_21_401', 'brand');
     assert.ok(response.includes('Invalid option.'));
     assert.strictEqual(fetchMock.mock.callCount(), 1);
@@ -333,6 +356,7 @@ test.describe('AI Fallback', () => {
     fetchMock = test.mock.method(globalThis, 'fetch', async () => ({
       ok: false, status: 429, statusText: 'Too Many Requests', text: async () => 'Rate limit exceeded'
     }) as any);
+    await conversationService.handleMessage('simulator', 'test_user_21_429', 'hi');
     response = await conversationService.handleMessage('simulator', 'test_user_21_429', 'brand');
     assert.ok(response.includes('Invalid option.'));
     assert.strictEqual(fetchMock.mock.callCount(), 1);
