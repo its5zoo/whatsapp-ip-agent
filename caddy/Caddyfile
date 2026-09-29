@@ -1,0 +1,16 @@
+app.example.com, localhost {
+    # Forward /api/* and /health to the backend
+    handle_path /api/* {
+        reverse_proxy backend:3000
+    }
+    
+    # We explicitly map /health as well if requested directly without /api
+    handle /health {
+        reverse_proxy backend:3000
+    }
+
+    # Everything else goes to the Next.js frontend
+    handle {
+        reverse_proxy frontend:3001
+    }
+}
