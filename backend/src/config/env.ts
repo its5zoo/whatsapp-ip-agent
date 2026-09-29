@@ -20,6 +20,24 @@ export const env = {
   ADMIN_PASSWORD_HASH: process.env.ADMIN_PASSWORD_HASH as string,
   JWT_SECRET: process.env.JWT_SECRET as string,
   CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3001',
+
+  // Phase 9: WhatsApp Integration (Optional)
+  WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
+  WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
+  WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN,
+  META_APP_SECRET: process.env.META_APP_SECRET,
+  WHATSAPP_GRAPH_API_VERSION: process.env.WHATSAPP_GRAPH_API_VERSION || 'v22.0',
+  WHATSAPP_REPLY_UNSUPPORTED: process.env.WHATSAPP_REPLY_UNSUPPORTED || 'Thank you for your message! This service only accepts text replies.\nPlease type your response to continue.',
+};
+
+// Phase 9 helper for checking if WhatsApp is configured
+export const isWhatsappConfigured = () => {
+  return !!(
+    env.WHATSAPP_PHONE_NUMBER_ID &&
+    env.WHATSAPP_ACCESS_TOKEN &&
+    env.WHATSAPP_VERIFY_TOKEN &&
+    env.META_APP_SECRET
+  );
 };
 
 // Validate required admin variables

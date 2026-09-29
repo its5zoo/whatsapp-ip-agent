@@ -9,6 +9,11 @@ app.example.com, localhost {
         reverse_proxy backend:3000
     }
 
+    # Forward webhooks to the backend
+    handle /webhook/* {
+        reverse_proxy backend:3000
+    }
+
     # Everything else goes to the Next.js frontend
     handle {
         reverse_proxy frontend:3001

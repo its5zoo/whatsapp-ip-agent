@@ -30,6 +30,7 @@ temp/
 # Database
 *.sql
 *.dump
+!backend/src/prisma/migrations/**/*.sql
 
 # n8n local data
 n8n/data/

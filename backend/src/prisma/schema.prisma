@@ -46,3 +46,11 @@ model Lead {
   @@index([email])
   @@map("leads")
 }
+
+model ProcessedWhatsappMessage {
+  messageId   String   @id @map("message_id")
+  waId        String   @map("wa_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_whatsapp_messages")
+}

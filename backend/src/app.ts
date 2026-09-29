@@ -6,6 +6,8 @@ import prisma from './db/prisma';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import adminRoutes from './routes/admin';
+import { whatsappRoutes } from './routes/whatsapp';
+import { isWhatsappConfigured } from './config/env';
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -22,6 +24,13 @@ export function buildApp(): FastifyInstance {
   app.register(healthRoutes);
   app.register(simulatorRoutes);
   app.register(adminRoutes);
+
+  if (isWhatsappConfigured()) {
+    app.register(whatsappRoutes);
+    app.log.info('WhatsApp integration enabled');
+  } else {
+    app.log.warn('WhatsApp integration disabled: missing env vars');
+  }
 
   app.addHook('onClose', async () => {
     await prisma.$disconnect();
