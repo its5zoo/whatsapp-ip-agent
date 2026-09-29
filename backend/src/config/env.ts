@@ -14,4 +14,15 @@ export const env = {
   N8N_WEBHOOK_URL: process.env.N8N_WEBHOOK_URL,
   N8N_WEBHOOK_SECRET: process.env.N8N_WEBHOOK_SECRET,
   N8N_TIMEOUT_MS: parseInt(process.env.N8N_TIMEOUT_MS || '5000', 10),
+
+  // Phase 7: Admin Dashboard
+  ADMIN_USERNAME: process.env.ADMIN_USERNAME as string,
+  ADMIN_PASSWORD_HASH: process.env.ADMIN_PASSWORD_HASH as string,
+  JWT_SECRET: process.env.JWT_SECRET as string,
+  CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3001',
 };
+
+// Validate required admin variables
+if (!env.ADMIN_USERNAME) throw new Error('ADMIN_USERNAME is required');
+if (!env.ADMIN_PASSWORD_HASH) throw new Error('ADMIN_PASSWORD_HASH is required');
+if (!env.JWT_SECRET) throw new Error('JWT_SECRET is required');

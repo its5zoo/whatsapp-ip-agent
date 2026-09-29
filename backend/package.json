@@ -12,11 +12,17 @@
     "prisma:generate": "prisma generate --schema src/prisma/schema.prisma"
   },
   "dependencies": {
+    "@fastify/cookie": "^9.4.0",
+    "@fastify/cors": "^8.5.0",
     "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.5",
-    "fastify": "^4.26.2"
+    "fastify": "^4.26.2",
+    "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.12.7",
     "prisma": "^6.19.3",
     "tsx": "^4.7.2",
