@@ -3,7 +3,7 @@ app.example.com, localhost {
     handle_path /api/* {
         reverse_proxy backend:3000
     }
-    
+
     # We explicitly map /health as well if requested directly without /api
     handle /health {
         reverse_proxy backend:3000
