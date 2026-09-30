@@ -19,10 +19,25 @@ export class AdminLeadService {
         channel: true,
         externalUserId: true,
         currentQuestionId: true,
-        data: true,
         isCompleted: true,
         createdAt: true,
         updatedAt: true
+      }
+    });
+  }
+
+  async getIncompleteConversationById(id: string) {
+    return prisma.conversation.findFirst({
+      where: { id, isCompleted: false },
+      select: {
+        id: true,
+        channel: true,
+        externalUserId: true,
+        currentQuestionId: true,
+        isCompleted: true,
+        createdAt: true,
+        updatedAt: true,
+        data: true
       }
     });
   }

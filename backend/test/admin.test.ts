@@ -134,11 +134,52 @@ test.describe('Admin API', () => {
       channel: 'whatsapp',
       externalUserId: '15551234567@s.whatsapp.net',
       currentQuestionId: 'patent_type',
-      data: { flowType: 'patent' },
       isCompleted: false,
       createdAt: body.conversations[0].createdAt,
       updatedAt: body.conversations[0].updatedAt
     });
+    assert.strictEqual('data' in body.conversations[0], false);
+
+    const unauthenticatedDetail = await app.inject({
+      method: 'GET',
+      url: `/admin/conversations/${body.conversations[0].id}`
+    });
+    assert.strictEqual(unauthenticatedDetail.statusCode, 401);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/admin/conversations/${body.conversations[0].id}`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(detail.statusCode, 200);
+    const detailBody = JSON.parse(detail.payload);
+    assert.deepStrictEqual(detailBody.conversation, {
+      id: body.conversations[0].id,
+      channel: 'whatsapp',
+      externalUserId: '15551234567@s.whatsapp.net',
+      currentQuestionId: 'patent_type',
+      isCompleted: false,
+      createdAt: body.conversations[0].createdAt,
+      updatedAt: body.conversations[0].updatedAt,
+      data: { flowType: 'patent' }
+    });
+
+    const completed = await prisma.conversation.findFirst({
+      where: { channel: 'test', externalUserId: 'user1' }
+    });
+    const completedDetail = await app.inject({
+      method: 'GET',
+      url: `/admin/conversations/${completed?.id}`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(completedDetail.statusCode, 404);
+
+    const missingDetail = await app.inject({
+      method: 'GET',
+      url: '/admin/conversations/missing-conversation',
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(missingDetail.statusCode, 404);
   });
 
   test('4. FlowType filtering and search works', async () => {

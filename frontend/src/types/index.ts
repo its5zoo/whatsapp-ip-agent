@@ -22,8 +22,8 @@ export interface IncompleteConversation {
   channel: string;
   externalUserId: string;
   currentQuestionId: string | null;
-  data: Record<string, unknown>;
   isCompleted: false;
   createdAt: string;
   updatedAt: string;
+  data?: Record<string, unknown>;
 }

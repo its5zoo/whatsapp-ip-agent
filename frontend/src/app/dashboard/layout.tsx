@@ -22,6 +22,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="sidebar-brand">GenioBrain Admin</div>
         <nav className="sidebar-nav">
           <a href="/dashboard">Leads</a>
+          <a href="/dashboard/conversations">Incomplete Conversations</a>
         </nav>
         <button className="logout-btn" onClick={handleLogout}>Logout</button>
       </aside>

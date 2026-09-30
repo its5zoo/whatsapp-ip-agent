@@ -69,6 +69,17 @@ const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
       };
     });
 
+    protectedServer.get('/admin/conversations/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const conversation = await adminLeadService.getIncompleteConversationById(id);
+
+      if (!conversation) {
+        return reply.status(404).send({ error: 'Incomplete conversation not found' });
+      }
+
+      return { conversation };
+    });
+
     protectedServer.get('/admin/leads/:id', async (request, reply) => {
       const { id } = request.params as { id: string };
       const lead = await adminLeadService.getLeadById(id);
