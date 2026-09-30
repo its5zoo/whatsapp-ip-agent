@@ -17,6 +17,15 @@ logs/
 # IDE
 .vscode/
 .idea/
+.agents/
+.cursor/
+.jetro/
+.github/copilot-instructions.md
+.mcp.json
+.windsurfrules
+AGENT.md
+CLAUDE.md
+Whats app automation.pdf
 
 # Build output
 dist/
@@ -40,3 +49,7 @@ docker-data/
 
 # Testing
 coverage/
+/backend/send-test.js
+/backend/test-fastify-async.js
+/backend/test-payload.ts
+/backend/test-route.js
