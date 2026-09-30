@@ -13,6 +13,11 @@ services:
       - ./postgres/init.sh:/docker-entrypoint-initdb.d/init.sh
     networks:
       - whatsapp_agent_prod_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.40.7
@@ -33,6 +38,92 @@ services:
     depends_on:
       - postgres
 
+  evolution-db-init:
+    profiles: ["evolution"]
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        until pg_isready; do sleep 1; done
+        psql --dbname=postgres <<'SQL'
+        SELECT 'CREATE DATABASE evolution'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'evolution')\gexec
+        SQL
+    networks:
+      - whatsapp_agent_prod_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  evolution-redis:
+    profiles: ["evolution"]
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - evolution_redis_data:/data
+    networks:
+      - whatsapp_agent_prod_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  evolution:
+    profiles: ["evolution"]
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://evolution:8080}
+      SERVER_PORT: 8080
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_AUTHENTICATION_API_KEY:-}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: ${EVOLUTION_DATABASE_CONNECTION_URI:-}
+      DATABASE_CONNECTION_CLIENT_NAME: ${EVOLUTION_DATABASE_CLIENT_NAME:-evolution_api}
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_LABELS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: ${EVOLUTION_REDIS_PREFIX_KEY:-evolution}
+      CACHE_LOCAL_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_URL: http://backend:3000/webhook/evolution
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_EVENTS: MESSAGES_UPSERT
+      WEBHOOK_GLOBAL_HEADERS: '{"x-evolution-webhook-secret":"${EVOLUTION_WEBHOOK_SECRET:-}"}'
+    networks:
+      - whatsapp_agent_prod_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+      evolution-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/manager/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   backend:
     build:
       context: ./backend
@@ -50,11 +141,16 @@ services:
       - AI_PROVIDER=${AI_PROVIDER:-gemini}
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_MODEL=${AI_MODEL:-}
+      - WHATSAPP_PROVIDER=${WHATSAPP_PROVIDER:-meta}
       - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-}
       - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-}
       - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
       - META_APP_SECRET=${META_APP_SECRET:-}
       - WHATSAPP_GRAPH_API_VERSION=${WHATSAPP_GRAPH_API_VERSION:-v22.0}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution:8080}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-}
+      - EVOLUTION_WEBHOOK_SECRET=${EVOLUTION_WEBHOOK_SECRET:-}
     networks:
       - whatsapp_agent_prod_network
     depends_on:
@@ -91,6 +187,7 @@ services:
 volumes:
   postgres_data:
   n8n_data:
+  evolution_redis_data:
   caddy_data:
   caddy_config:
 

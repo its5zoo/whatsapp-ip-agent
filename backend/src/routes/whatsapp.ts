@@ -1,13 +1,15 @@
 import { FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { env } from '../config/env';
-import { verifySignature } from '../whatsapp/signatureVerifier';
+import { env, isWhatsappProviderConfigured } from '../config/env';
 import { WebhookPayload } from '../whatsapp/types';
-import { parsePayload } from '../whatsapp/payloadParser';
+import { createWhatsAppProvider } from '../whatsapp/providers';
 import { conversationService } from '../services/conversationService';
-import { whatsappClient } from '../services/whatsappClient';
 import prisma from '../db/prisma';
 
 export const whatsappRoutes: FastifyPluginAsync = async (server) => {
+  const metaProvider = createWhatsAppProvider('meta');
+  const evolutionProvider = createWhatsAppProvider('evolution');
+  const outboundProvider = createWhatsAppProvider(env.WHATSAPP_PROVIDER);
+
   // Add a route-scoped content type parser for application/json that parses as buffer
   // This ensures we get the raw Buffer for signature verification before any JSON parsing.
   server.addContentTypeParser(
@@ -19,22 +21,23 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
     }
   );
 
-  server.get('/webhook/whatsapp', async (request, reply) => {
+  if (isWhatsappProviderConfigured('meta')) {
+    server.get('/webhook/whatsapp', async (request, reply) => {
     const query = request.query as any;
     
-    if (
-      query['hub.mode'] === 'subscribe' &&
-      query['hub.verify_token'] === env.WHATSAPP_VERIFY_TOKEN
-    ) {
+    if (metaProvider.verifyInboundChallenge(
+      query['hub.mode'],
+      query['hub.verify_token']
+    )) {
       // Return the challenge plain text with HTTP 200
       return reply.status(200).send(query['hub.challenge']);
     }
     
     // Invalid verification
     return reply.status(403).send();
-  });
+    });
 
-  server.post('/webhook/whatsapp', async (request, reply) => {
+    server.post('/webhook/whatsapp', async (request, reply) => {
     const rawBody = request.body as Buffer;
     const signature = request.headers['x-hub-signature-256'] as string;
 
@@ -43,7 +46,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
       return reply.status(500).send();
     }
 
-    if (!verifySignature(rawBody, signature, env.META_APP_SECRET)) {
+    if (!metaProvider.verifyInboundSignature(rawBody, signature)) {
       server.log.warn('Invalid or missing WhatsApp webhook signature');
       return reply.status(401).send();
     }
@@ -60,15 +63,43 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
     reply.status(200).send();
 
     // Process asynchronously (fire-and-forget)
-    processWebhookPayload(payload).catch((err) => {
+    processWebhookPayload(metaProvider, payload).catch((err) => {
       server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing WhatsApp webhook payload');
     });
 
     return reply;
-  });
+    });
+  }
 
-  async function processWebhookPayload(payload: WebhookPayload) {
-    const events = parsePayload(payload);
+  if (isWhatsappProviderConfigured('evolution')) {
+    server.post('/webhook/evolution', async (request, reply) => {
+      const secret = request.headers['x-evolution-webhook-secret'] as string | undefined;
+      if (!evolutionProvider.verifyWebhookSecret(secret)) {
+        server.log.warn('Invalid or missing Evolution webhook authentication');
+        return reply.status(401).send();
+      }
+
+      const rawBody = request.body as Buffer;
+      let payload: unknown;
+      try {
+        payload = JSON.parse(rawBody.toString('utf-8'));
+      } catch (_err) {
+        return reply.status(400).send();
+      }
+
+      reply.status(200).send();
+      processWebhookPayload(evolutionProvider, payload).catch((err) => {
+        server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing Evolution webhook payload');
+      });
+      return reply;
+    });
+  }
+
+  async function processWebhookPayload(
+    inboundProvider: ReturnType<typeof createWhatsAppProvider>,
+    payload: WebhookPayload | unknown
+  ) {
+    const events = inboundProvider.parseInbound(payload);
     server.log.info({ events }, 'Parsed WhatsApp webhook events');
 
     for (const event of events) {
@@ -102,7 +133,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
     // Hand over to the ConversationService
     const responseText = await conversationService.handleMessage('whatsapp', waId, text);
     if (responseText) {
-      await whatsappClient.sendTextMessage(waId, responseText);
+      await outboundProvider.sendTextMessage(waId, responseText);
     }
   }
 
@@ -123,6 +154,6 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
     }
 
     // Send the polite unsupported text reply
-    await whatsappClient.sendTextMessage(waId, env.WHATSAPP_REPLY_UNSUPPORTED);
+    await outboundProvider.sendTextMessage(waId, env.WHATSAPP_REPLY_UNSUPPORTED);
   }
 };

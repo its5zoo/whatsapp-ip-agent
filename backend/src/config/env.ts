@@ -2,6 +2,16 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+export type WhatsappProvider = 'meta' | 'evolution';
+
+export function parseWhatsappProvider(value: string | undefined): WhatsappProvider {
+  const provider = value || 'meta';
+  if (provider !== 'meta' && provider !== 'evolution') {
+    throw new Error('WHATSAPP_PROVIDER must be either "meta" or "evolution"');
+  }
+  return provider;
+}
+
 export const env = {
   PORT: parseInt(process.env.PORT || '3000', 10),
   HOST: process.env.HOST || '0.0.0.0',
@@ -22,23 +32,39 @@ export const env = {
   CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3001',
 
   // Phase 9: WhatsApp Integration (Optional)
+  WHATSAPP_PROVIDER: parseWhatsappProvider(process.env.WHATSAPP_PROVIDER),
   WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
   WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
   WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN,
   META_APP_SECRET: process.env.META_APP_SECRET,
   WHATSAPP_GRAPH_API_VERSION: process.env.WHATSAPP_GRAPH_API_VERSION || 'v22.0',
   WHATSAPP_REPLY_UNSUPPORTED: process.env.WHATSAPP_REPLY_UNSUPPORTED || 'Thank you for your message! This service only accepts text replies.\nPlease type your response to continue.',
+  EVOLUTION_API_URL: process.env.EVOLUTION_API_URL,
+  EVOLUTION_API_KEY: process.env.EVOLUTION_API_KEY,
+  EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE,
+  EVOLUTION_WEBHOOK_SECRET: process.env.EVOLUTION_WEBHOOK_SECRET,
 };
 
-// Phase 9 helper for checking if WhatsApp is configured
-export const isWhatsappConfigured = () => {
+export function isWhatsappProviderConfigured(provider: WhatsappProvider): boolean {
+  if (provider === 'meta') {
+    return !!(
+      env.WHATSAPP_PHONE_NUMBER_ID &&
+      env.WHATSAPP_ACCESS_TOKEN &&
+      env.WHATSAPP_VERIFY_TOKEN &&
+      env.META_APP_SECRET
+    );
+  }
+
   return !!(
-    env.WHATSAPP_PHONE_NUMBER_ID &&
-    env.WHATSAPP_ACCESS_TOKEN &&
-    env.WHATSAPP_VERIFY_TOKEN &&
-    env.META_APP_SECRET
+    env.EVOLUTION_API_URL &&
+    env.EVOLUTION_API_KEY &&
+    env.EVOLUTION_INSTANCE &&
+    env.EVOLUTION_WEBHOOK_SECRET
   );
-};
+}
+
+// Phase 9 helper for checking if the active WhatsApp provider is configured
+export const isWhatsappConfigured = () => isWhatsappProviderConfigured(env.WHATSAPP_PROVIDER);
 
 // Validate required admin variables
 if (!env.ADMIN_USERNAME) throw new Error('ADMIN_USERNAME is required');

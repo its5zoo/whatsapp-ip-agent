@@ -19,6 +19,10 @@ describe('whatsappRoutes', () => {
     env.WHATSAPP_VERIFY_TOKEN = 'test-verify';
     env.META_APP_SECRET = 'test-secret';
     env.WHATSAPP_GRAPH_API_VERSION = 'v22.0';
+    env.EVOLUTION_API_URL = 'https://evolution.example.com';
+    env.EVOLUTION_API_KEY = 'evolution-api-key';
+    env.EVOLUTION_INSTANCE = 'test-instance';
+    env.EVOLUTION_WEBHOOK_SECRET = 'evolution-webhook-secret';
 
     app = buildApp();
     await app.ready();
