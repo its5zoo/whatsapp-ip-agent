@@ -16,3 +16,14 @@ export interface Lead {
     displayValue: string;
   }[];
 }
+
+export interface IncompleteConversation {
+  id: string;
+  channel: string;
+  externalUserId: string;
+  currentQuestionId: string | null;
+  data: Record<string, unknown>;
+  isCompleted: false;
+  createdAt: string;
+  updatedAt: string;
+}

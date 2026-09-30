@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Lead } from '@/types';
+import { IncompleteConversation, Lead } from '@/types';
 import { fetchApi } from '@/lib/api';
 import Link from 'next/link';
 
 export default function Dashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [incompleteConversations, setIncompleteConversations] = useState<IncompleteConversation[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -20,13 +21,15 @@ export default function Dashboard() {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [leadsData, statsData] = await Promise.all([
+      const [leadsData, statsData, conversationsData] = await Promise.all([
         fetchApi(`/admin/leads?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&flowType=${encodeURIComponent(flowType)}`),
-        fetchApi('/admin/stats')
+        fetchApi('/admin/stats'),
+        fetchApi('/admin/conversations')
       ]);
       setLeads(leadsData.leads || []);
       setTotalPages(leadsData.pagination?.totalPages || 1);
       setStats(statsData);
+      setIncompleteConversations(conversationsData.conversations || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -101,6 +104,36 @@ export default function Dashboard() {
           <option value="notsure">Not Sure</option>
         </select>
       </div>
+
+      <section className="incomplete-section">
+        <h2>Incomplete Conversations</h2>
+        {incompleteConversations.length === 0 ? (
+          <div className="empty-state">No incomplete conversations.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Channel</th>
+                <th>WhatsApp Identity</th>
+                <th>Current Question</th>
+                <th>Last Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incompleteConversations.map(conversation => (
+                <tr key={conversation.id}>
+                  <td><span className="badge">Incomplete</span></td>
+                  <td>{conversation.channel}</td>
+                  <td>{conversation.externalUserId}</td>
+                  <td>{conversation.currentQuestionId || 'Main menu'}</td>
+                  <td>{new Date(conversation.updatedAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       {loading ? (
         <div>Loading leads...</div>

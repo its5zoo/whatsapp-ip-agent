@@ -10,6 +10,23 @@ export interface LeadFilter {
 }
 
 export class AdminLeadService {
+  async getIncompleteConversations() {
+    return prisma.conversation.findMany({
+      where: { isCompleted: false },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        channel: true,
+        externalUserId: true,
+        currentQuestionId: true,
+        data: true,
+        isCompleted: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+  }
+
   async getLeads(filter: LeadFilter) {
     let page = filter.page !== undefined ? Number(filter.page) : 1;
     let limit = filter.limit !== undefined ? Number(filter.limit) : 20;

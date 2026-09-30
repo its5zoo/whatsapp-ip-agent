@@ -96,6 +96,51 @@ test.describe('Admin API', () => {
     assert.strictEqual(body.pagination.total, 1);
   });
 
+  test('3b. GET /admin/conversations returns incomplete conversations only', async () => {
+    await prisma.conversation.create({
+      data: {
+        channel: 'whatsapp',
+        externalUserId: '15551234567@s.whatsapp.net',
+        currentQuestionId: 'patent_type',
+        data: { flowType: 'patent' },
+        isCompleted: false
+      }
+    });
+
+    const unauthenticated = await app.inject({
+      method: 'GET',
+      url: '/admin/conversations'
+    });
+    assert.strictEqual(unauthenticated.statusCode, 401);
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'admin_test', password: 'password123' }
+    });
+    const validCookie = `auth_token=${loginRes.cookies.find((c: any) => c.name === 'auth_token').value}`;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/admin/conversations',
+      headers: { cookie: validCookie }
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    const body = JSON.parse(res.payload);
+    assert.strictEqual(body.conversations.length, 1);
+    assert.deepStrictEqual(body.conversations[0], {
+      id: body.conversations[0].id,
+      channel: 'whatsapp',
+      externalUserId: '15551234567@s.whatsapp.net',
+      currentQuestionId: 'patent_type',
+      data: { flowType: 'patent' },
+      isCompleted: false,
+      createdAt: body.conversations[0].createdAt,
+      updatedAt: body.conversations[0].updatedAt
+    });
+  });
+
   test('4. FlowType filtering and search works', async () => {
     const loginRes = await app.inject({
       method: 'POST',
