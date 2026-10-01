@@ -53,3 +53,9 @@ coverage/
 /backend/test-fastify-async.js
 /backend/test-payload.ts
 /backend/test-route.js
+
+# Local backup secrets and generated artifacts
+/ops/backup/backup.env
+/ops/backup/restic-password
+/ops/backup/recovery/
+/ops/backup/tmp/

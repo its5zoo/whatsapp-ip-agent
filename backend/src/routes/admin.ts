@@ -1,12 +1,35 @@
-import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { authService } from '../services/authService';
 import { verifyAuthCookie } from '../middleware/auth';
 import { adminLeadService, LeadFilter } from '../services/adminLeadService';
 import { decodeAnswers } from '../engine/answerDecoder';
 
 const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
+  const failedLoginAttempts = new Map<string, number[]>();
+  const loginAttemptLimit = 5;
+  const loginAttemptWindowMs = 15 * 60 * 1000;
+
+  const loginKey = (request: FastifyRequest) => {
+    const body = request.body as { username?: string } | undefined;
+    return `${request.ip}:${body?.username ?? ''}`;
+  };
+
+  const rejectExcessiveLoginAttempts = async (request: FastifyRequest, reply: FastifyReply) => {
+    const key = loginKey(request);
+    const cutoff = Date.now() - loginAttemptWindowMs;
+    const attempts = (failedLoginAttempts.get(key) ?? []).filter((timestamp) => timestamp > cutoff);
+    if (attempts.length >= loginAttemptLimit) {
+      failedLoginAttempts.set(key, attempts);
+      return reply
+        .status(429)
+        .send(Object.assign(new Error('Too many login attempts'), { statusCode: 429 }));
+    }
+    failedLoginAttempts.set(key, attempts);
+  };
+
   // Public Login Route
   server.post('/admin/login', {
+    preHandler: rejectExcessiveLoginAttempts,
     schema: {
       body: {
         type: 'object',
@@ -22,9 +45,15 @@ const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
 
     const isValid = await authService.validateLogin(username, password);
     if (!isValid) {
+      const key = loginKey(request);
+      const cutoff = Date.now() - loginAttemptWindowMs;
+      const attempts = (failedLoginAttempts.get(key) ?? []).filter((timestamp) => timestamp > cutoff);
+      attempts.push(Date.now());
+      failedLoginAttempts.set(key, attempts);
       return reply.status(401).send({ error: 'Invalid credentials' });
     }
 
+    failedLoginAttempts.delete(loginKey(request));
     const token = authService.generateToken();
 
     reply.setCookie('auth_token', token, {

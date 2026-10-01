@@ -63,7 +63,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
     reply.status(200).send();
 
     // Process asynchronously (fire-and-forget)
-    processWebhookPayload(metaProvider, payload).catch((err) => {
+    processWebhookPayload('meta', metaProvider, payload).catch((err) => {
       server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing WhatsApp webhook payload');
     });
 
@@ -88,7 +88,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
       }
 
       reply.status(200).send();
-      processWebhookPayload(evolutionProvider, payload).catch((err) => {
+      processWebhookPayload('evolution', evolutionProvider, payload).catch((err) => {
         server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing Evolution webhook payload');
       });
       return reply;
@@ -96,11 +96,19 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
   }
 
   async function processWebhookPayload(
+    provider: 'meta' | 'evolution',
     inboundProvider: ReturnType<typeof createWhatsAppProvider>,
     payload: WebhookPayload | unknown
   ) {
     const events = inboundProvider.parseInbound(payload);
-    server.log.info({ events }, 'Parsed WhatsApp webhook events');
+    server.log.info(
+      {
+        provider,
+        eventCount: events.length,
+        eventTypes: [...new Set(events.map((event) => event.type))]
+      },
+      'Parsed WhatsApp webhook events'
+    );
 
     for (const event of events) {
       if (event.type === 'text') {

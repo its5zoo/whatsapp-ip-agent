@@ -45,22 +45,39 @@ export const env = {
   EVOLUTION_WEBHOOK_SECRET: process.env.EVOLUTION_WEBHOOK_SECRET,
 };
 
+function hasValue(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 export function isWhatsappProviderConfigured(provider: WhatsappProvider): boolean {
   if (provider === 'meta') {
     return !!(
-      env.WHATSAPP_PHONE_NUMBER_ID &&
-      env.WHATSAPP_ACCESS_TOKEN &&
-      env.WHATSAPP_VERIFY_TOKEN &&
-      env.META_APP_SECRET
+      hasValue(env.WHATSAPP_PHONE_NUMBER_ID) &&
+      hasValue(env.WHATSAPP_ACCESS_TOKEN) &&
+      hasValue(env.WHATSAPP_VERIFY_TOKEN) &&
+      hasValue(env.META_APP_SECRET)
     );
   }
 
   return !!(
-    env.EVOLUTION_API_URL &&
-    env.EVOLUTION_API_KEY &&
-    env.EVOLUTION_INSTANCE &&
-    env.EVOLUTION_WEBHOOK_SECRET
+    hasValue(env.EVOLUTION_API_URL) &&
+    hasValue(env.EVOLUTION_API_KEY) &&
+    hasValue(env.EVOLUTION_INSTANCE) &&
+    hasValue(env.EVOLUTION_WEBHOOK_SECRET)
   );
+}
+
+export function validateProductionWhatsappConfig(provider: WhatsappProvider = env.WHATSAPP_PROVIDER): void {
+  if (process.env.NODE_ENV !== 'production' || provider !== 'evolution') {
+    return;
+  }
+
+  if (!hasValue(env.EVOLUTION_API_KEY)) {
+    throw new Error('EVOLUTION_API_KEY is required when WHATSAPP_PROVIDER=evolution in production');
+  }
+  if (!hasValue(env.EVOLUTION_INSTANCE)) {
+    throw new Error('EVOLUTION_INSTANCE is required when WHATSAPP_PROVIDER=evolution in production');
+  }
 }
 
 // Phase 9 helper for checking if the active WhatsApp provider is configured
@@ -70,3 +87,4 @@ export const isWhatsappConfigured = () => isWhatsappProviderConfigured(env.WHATS
 if (!env.ADMIN_USERNAME) throw new Error('ADMIN_USERNAME is required');
 if (!env.ADMIN_PASSWORD_HASH) throw new Error('ADMIN_PASSWORD_HASH is required');
 if (!env.JWT_SECRET) throw new Error('JWT_SECRET is required');
+validateProductionWhatsappConfig();

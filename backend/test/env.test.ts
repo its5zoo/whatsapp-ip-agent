@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert';
-import { env, isWhatsappConfigured, parseWhatsappProvider } from '../src/config/env';
+import {
+  env,
+  isWhatsappConfigured,
+  parseWhatsappProvider,
+  validateProductionWhatsappConfig
+} from '../src/config/env';
 
 test.describe('WhatsApp configuration', () => {
   const original = {
@@ -14,6 +19,7 @@ test.describe('WhatsApp configuration', () => {
     evolutionInstance: env.EVOLUTION_INSTANCE,
     evolutionSecret: env.EVOLUTION_WEBHOOK_SECRET
   };
+  const originalNodeEnv = process.env.NODE_ENV;
 
   test.afterEach(() => {
     env.WHATSAPP_PROVIDER = original.provider;
@@ -25,6 +31,11 @@ test.describe('WhatsApp configuration', () => {
     env.EVOLUTION_API_KEY = original.evolutionKey;
     env.EVOLUTION_INSTANCE = original.evolutionInstance;
     env.EVOLUTION_WEBHOOK_SECRET = original.evolutionSecret;
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
   });
 
   test('defaults an unset provider to Meta', () => {
@@ -82,5 +93,47 @@ test.describe('WhatsApp configuration', () => {
     env.EVOLUTION_WEBHOOK_SECRET = 'webhook-secret';
 
     assert.strictEqual(isWhatsappConfigured(), false);
+  });
+
+  test('keeps Meta configuration valid without Evolution credentials in production', () => {
+    process.env.NODE_ENV = 'production';
+    env.WHATSAPP_PROVIDER = 'meta';
+    env.EVOLUTION_API_KEY = undefined;
+    env.EVOLUTION_INSTANCE = undefined;
+
+    assert.doesNotThrow(() => validateProductionWhatsappConfig());
+  });
+
+  test('fails production Evolution configuration when the API key is missing', () => {
+    process.env.NODE_ENV = 'production';
+    env.WHATSAPP_PROVIDER = 'evolution';
+    env.EVOLUTION_API_KEY = '';
+    env.EVOLUTION_INSTANCE = 'instance';
+
+    assert.throws(
+      () => validateProductionWhatsappConfig(),
+      /EVOLUTION_API_KEY is required/
+    );
+  });
+
+  test('fails production Evolution configuration when the instance is missing', () => {
+    process.env.NODE_ENV = 'production';
+    env.WHATSAPP_PROVIDER = 'evolution';
+    env.EVOLUTION_API_KEY = 'evolution-key';
+    env.EVOLUTION_INSTANCE = ' ';
+
+    assert.throws(
+      () => validateProductionWhatsappConfig(),
+      /EVOLUTION_INSTANCE is required/
+    );
+  });
+
+  test('accepts valid production Evolution configuration', () => {
+    process.env.NODE_ENV = 'production';
+    env.WHATSAPP_PROVIDER = 'evolution';
+    env.EVOLUTION_API_KEY = 'evolution-key';
+    env.EVOLUTION_INSTANCE = 'instance';
+
+    assert.doesNotThrow(() => validateProductionWhatsappConfig());
   });
 });

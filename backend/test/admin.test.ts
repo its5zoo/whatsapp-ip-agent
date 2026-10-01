@@ -65,6 +65,79 @@ test.describe('Admin API', () => {
     cookie = `auth_token=${cookies.find((c: any) => c.name === 'auth_token').value}`;
   });
 
+  test('1a. POST /admin/login limits repeated failures per IP and username', async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/login',
+        payload: { username: 'admin_test', password: 'wrongpassword' }
+      });
+      assert.strictEqual(response.statusCode, 401);
+      assert.deepStrictEqual(JSON.parse(response.payload), { error: 'Invalid credentials' });
+    }
+
+    const limitedResponse = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'admin_test', password: 'wrongpassword' }
+    });
+    assert.strictEqual(limitedResponse.statusCode, 429);
+    assert.strictEqual(JSON.parse(limitedResponse.payload).statusCode, 429);
+    assert.strictEqual(JSON.parse(limitedResponse.payload).message, 'Too many login attempts');
+
+    const differentUsernameResponse = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'another-user', password: 'wrongpassword' }
+    });
+    assert.strictEqual(differentUsernameResponse.statusCode, 401);
+  });
+
+  test('1b. successful logins do not consume the failed-attempt budget', async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/login',
+        payload: { username: 'admin_test', password: 'password123' }
+      });
+      assert.strictEqual(response.statusCode, 200);
+    }
+
+    const failedResponse = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'admin_test', password: 'wrongpassword' }
+    });
+    assert.strictEqual(failedResponse.statusCode, 401);
+  });
+
+  test('1c. successful login resets previous failed attempts', async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/login',
+        payload: { username: 'admin_test', password: 'wrongpassword' }
+      });
+      assert.strictEqual(response.statusCode, 401);
+    }
+
+    const successResponse = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'admin_test', password: 'password123' }
+    });
+    assert.strictEqual(successResponse.statusCode, 200);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/login',
+        payload: { username: 'admin_test', password: 'wrongpassword' }
+      });
+      assert.strictEqual(response.statusCode, 401);
+    }
+  });
+
   test('2. Protected endpoint without auth returns 401', async () => {
     const res = await app.inject({
       method: 'GET',

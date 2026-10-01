@@ -1,17 +1,28 @@
 app.example.com, localhost {
+    # Keep backend readiness checks internal; never expose them through the API proxy.
+    handle /api/ready {
+        respond 404
+    }
+
     # Forward /api/* and /health to the backend
     handle_path /api/* {
-        reverse_proxy backend:3000
+        reverse_proxy backend:3000 {
+            health_uri /ready
+        }
     }
 
     # We explicitly map /health as well if requested directly without /api
     handle /health {
-        reverse_proxy backend:3000
+        reverse_proxy backend:3000 {
+            health_uri /ready
+        }
     }
 
     # Forward webhooks to the backend
     handle /webhook/* {
-        reverse_proxy backend:3000
+        reverse_proxy backend:3000 {
+            health_uri /ready
+        }
     }
 
     # Everything else goes to the Next.js frontend

@@ -194,4 +194,28 @@ describe('Simulator REST API', () => {
     require('../src/services/conversationService').conversationService.handleMessage = originalHandleMessage;
   });
 
+  test('13. Simulator route is unavailable in production', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const productionApp = buildApp();
+
+    try {
+      await productionApp.ready();
+      const response = await productionApp.inject({
+        method: 'POST',
+        url: '/simulator/message',
+        payload: { userId: 'production-user', message: 'hi' }
+      });
+
+      assert.strictEqual(response.statusCode, 404);
+    } finally {
+      await productionApp.close();
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    }
+  });
+
 });

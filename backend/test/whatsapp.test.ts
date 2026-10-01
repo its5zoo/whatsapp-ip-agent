@@ -35,6 +35,7 @@ describe('whatsappRoutes', () => {
     mock.method(conversationService, 'handleMessage', async () => 'mock response');
     mock.method(whatsappClient, 'sendTextMessage', async () => {});
     mock.method(app.log, 'error', () => {});
+    mock.method(app.log, 'info', () => {});
     mock.method(app.log, 'warn', () => {});
   });
 
@@ -176,6 +177,57 @@ describe('whatsappRoutes', () => {
       const sendTextMessageCalls = (whatsappClient.sendTextMessage as any).mock.calls;
       assert.strictEqual(sendTextMessageCalls.length, 1);
       assert.deepStrictEqual(sendTextMessageCalls[0].arguments, ['123456', 'mock response']);
+    });
+
+    test('logs only non-sensitive event metadata', async () => {
+      const payload = {
+        object: 'whatsapp_business_account',
+        entry: [{
+          id: 'sensitive-entry-id',
+          changes: [{
+            field: 'messages',
+            value: {
+              messaging_product: 'whatsapp',
+              metadata: { display_phone_number: 'sensitive-phone', phone_number_id: 'sensitive-phone-id' },
+              contacts: [{ profile: { name: 'Sensitive Name' }, wa_id: '15550001111' }],
+              messages: [{
+                from: '15550001111',
+                id: 'sensitive-message-id',
+                timestamp: '123',
+                type: 'text',
+                text: { body: 'Sensitive message text' }
+              }]
+            }
+          }]
+        }]
+      };
+      const payloadString = JSON.stringify(payload);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/webhook/whatsapp',
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signPayload(payloadString)
+        },
+        payload: payloadString
+      });
+
+      assert.strictEqual(response.statusCode, 200);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const infoCalls = (app.log.info as any).mock.calls;
+      const parsedEventsLog = infoCalls.find((call: any[]) => call.arguments[1] === 'Parsed WhatsApp webhook events');
+      assert.ok(parsedEventsLog);
+      assert.deepStrictEqual(parsedEventsLog.arguments[0], {
+        provider: 'meta',
+        eventCount: 1,
+        eventTypes: ['text']
+      });
+      const serializedLog = JSON.stringify(parsedEventsLog);
+      assert.ok(!serializedLog.includes('Sensitive'));
+      assert.ok(!serializedLog.includes('15550001111'));
+      assert.ok(!serializedLog.includes('sensitive-message-id'));
     });
 
     test('should handle duplicate wamid safely', async () => {

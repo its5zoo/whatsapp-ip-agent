@@ -5,6 +5,7 @@ import prisma from './db/prisma';
 
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import rateLimit from '@fastify/rate-limit';
 import adminRoutes from './routes/admin';
 import { whatsappRoutes } from './routes/whatsapp';
 import { isWhatsappConfigured } from './config/env';
@@ -20,9 +21,12 @@ export function buildApp(): FastifyInstance {
   });
 
   app.register(cookie);
+  app.register(rateLimit, { global: false });
 
   app.register(healthRoutes);
-  app.register(simulatorRoutes);
+  if (process.env.NODE_ENV !== 'production') {
+    app.register(simulatorRoutes);
+  }
   app.register(adminRoutes);
 
   if (isWhatsappConfigured()) {

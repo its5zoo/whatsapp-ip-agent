@@ -22,7 +22,7 @@
           "string": [
             {
               "value1": "={{$node[\"Webhook Trigger\"].json[\"headers\"][\"x-webhook-secret\"]}}",
-              "value2": "YOUR_SECRET_HERE"
+              "value2": "={{$env.N8N_WEBHOOK_SECRET}}"
             }
           ]
         }
