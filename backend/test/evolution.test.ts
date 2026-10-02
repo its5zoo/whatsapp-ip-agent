@@ -154,11 +154,22 @@ describe('Evolution webhook', () => {
 
     const response = await post(largePayload);
     assert.strictEqual(response.statusCode, 200);
+    await waitFor(async () => Boolean(await prisma.processedWhatsappMessage.findUnique({
+      where: { messageId: 'evolution-large-body-1' }
+    })));
+    await waitFor(async () => Boolean(await prisma.whatsappOutboundMessage.findUnique({
+      where: { inboundMessageId: 'evolution-large-body-1' }
+    })));
     await waitFor(async () => {
       const outbound = await prisma.whatsappOutboundMessage.findUnique({
         where: { inboundMessageId: 'evolution-large-body-1' }
       });
-      return outbound?.status === 'sent';
+      const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
+        (call: any) =>
+          call.arguments[0] === '15551112222@s.whatsapp.net' &&
+          call.arguments[1] === 'mock response'
+      );
+      return outbound?.status === 'sent' && Boolean(providerCall);
     });
   });
 
@@ -177,13 +188,21 @@ describe('Evolution webhook', () => {
       const outbound = await prisma.whatsappOutboundMessage.findUnique({
         where: { inboundMessageId: 'evolution-meta-outbound-1' }
       });
-      const calls = (whatsappClient.sendTextMessage as any).mock.calls;
-      return outbound?.status === 'sent' || calls.length > 0;
+      const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
+        (call: any) =>
+          call.arguments[0] === '15551112222@s.whatsapp.net' &&
+          call.arguments[1] === 'mock response'
+      );
+      return outbound?.status === 'sent' && Boolean(providerCall);
     });
 
-    const calls = (whatsappClient.sendTextMessage as any).mock.calls;
-    assert.ok(calls.length > 0);
-    assert.deepStrictEqual(calls[0].arguments, [
+    const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
+      (call: any) =>
+        call.arguments[0] === '15551112222@s.whatsapp.net' &&
+        call.arguments[1] === 'mock response'
+    );
+    assert.ok(providerCall);
+    assert.deepStrictEqual(providerCall.arguments, [
       '15551112222@s.whatsapp.net',
       'mock response'
     ]);
@@ -252,12 +271,16 @@ describe('Evolution webhook', () => {
     await waitFor(async () => Boolean(await prisma.whatsappOutboundMessage.findUnique({
       where: { inboundMessageId: 'evolution-image-1' }
     })));
-    await waitFor(async () => (whatsappClient.sendTextMessage as any).mock.calls.length > 0);
     await waitFor(async () => {
       const outbound = await prisma.whatsappOutboundMessage.findUnique({
         where: { inboundMessageId: 'evolution-image-1' }
       });
-      return outbound?.status === 'sent';
+      const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
+        (call: any) =>
+          call.arguments[0] === '15551112222@s.whatsapp.net' &&
+          call.arguments[1] === env.WHATSAPP_REPLY_UNSUPPORTED
+      );
+      return outbound?.status === 'sent' && Boolean(providerCall);
     });
     const dedup = await prisma.processedWhatsappMessage.findUnique({
       where: { messageId: 'evolution-image-1' }

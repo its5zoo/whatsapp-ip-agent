@@ -1,7 +1,8 @@
-import { test, describe, before, after } from 'node:test';
+import { test, describe, before, after, mock } from 'node:test';
 import * as assert from 'node:assert';
 import prisma from '../src/db/prisma';
 import { conversationService } from '../src/services/conversationService';
+import { aiFallbackService } from '../src/ai/aiFallbackService';
 
 // Test safety guard
 if (!process.env.DATABASE_URL?.includes('_test')) {
@@ -88,7 +89,7 @@ describe('Conversation Continuity', () => {
     assert.ok(!res.includes('Welcome back'));
   });
 
-  test('7. Completed conversation prompts again for a normal message regardless of age', async () => {
+  test('7. Completed conversation requires BACK before starting a new enquiry', async () => {
     await prisma.conversation.create({
       data: {
         channel: 'simulator',
@@ -117,19 +118,52 @@ describe('Conversation Continuity', () => {
       }
     });
 
-    const res = await conversationService.handleMessage('simulator', 'completed1', 'Okay', now);
-    assert.strictEqual(res, `You have already submitted an enquiry with GenioBrain IP Solution.
+    const before = await prisma.conversation.findUnique({ where: { id: conv!.id } });
+    const leadBefore = await prisma.lead.findUnique({ where: { conversationId: conv!.id } });
+    const aiCall = mock.method(aiFallbackService, 'interpretChoice');
+    const res = await conversationService.handleMessage('simulator', 'completed1', 'Please update my email', now);
+    assert.strictEqual(
+      res,
+      'Your previous enquiry has already been submitted. Please reply HELP to speak to our team, or BACK to start a new enquiry.'
+    );
+    const updated = await prisma.conversation.findUnique({ where: { id: conv!.id } });
+    assert.deepStrictEqual(updated!.data, before!.data);
+    assert.strictEqual(updated!.isCompleted, true);
+    assert.deepStrictEqual(
+      await prisma.lead.findUnique({ where: { conversationId: conv!.id } }),
+      leadBefore
+    );
+    assert.strictEqual(aiCall.mock.callCount(), 0);
+    aiCall.mock.restore();
 
-Would you like to submit a new enquiry?
+    const prompt = await conversationService.handleMessage('simulator', 'completed1', 'BACK', now);
+    assert.strictEqual(prompt, `You have already submitted an enquiry with GenioBrain IP Solution.
+
+Would you like to create a new enquiry?
 
 1. Yes – Start a new enquiry
 2. No – Keep my existing enquiry`);
-    const updated = await prisma.conversation.findUnique({ where: { id: conv!.id } });
-    assert.deepStrictEqual((updated!.data as any)._conversationMeta, { continuityPrompt: 'completed' });
-    assert.strictEqual(await prisma.lead.count({ where: { conversationId: conv!.id } }), 1);
   });
 
-  test('8. Completed prompt option 1 starts a new enquiry without creating a Lead', async () => {
+  test('8. Completed commands remain available without changing the Lead', async () => {
+    for (const [command, expected] of [
+      ['HELP', 'HELP – Speak to our team'],
+      ['SERVICES', 'SERVICES – Explore our IP services'],
+      ['CONSULTATION', 'CONSULTATION – Request a consultation']
+    ]) {
+      const response = await conversationService.handleMessage('simulator', 'completed1', command, now);
+      assert.ok(response.includes(expected));
+    }
+    const conversation = await prisma.conversation.findFirst({
+      where: { externalUserId: 'completed1' },
+      include: { lead: true }
+    });
+    assert.strictEqual(conversation!.isCompleted, true);
+    assert.ok(conversation!.lead);
+    await conversationService.handleMessage('simulator', 'completed1', 'BACK', now);
+  });
+
+  test('9. Completed prompt option 1 starts a new enquiry without creating a Lead', async () => {
     const res = await conversationService.handleMessage('simulator', 'completed1', '1', now);
     assert.ok(res.includes('Q1. What type of IP protection are you looking for?'));
     const conv = await prisma.conversation.findFirst({ where: { externalUserId: 'completed1' } });
@@ -138,7 +172,7 @@ Would you like to submit a new enquiry?
     assert.strictEqual(await prisma.lead.count({ where: { conversationId: conv!.id } }), 1);
   });
 
-  test('9. Completed prompt option 2 keeps the existing enquiry', async () => {
+  test('10. Completed prompt option 2 keeps the existing enquiry', async () => {
     // Reset state
     const conv = await prisma.conversation.findFirst({ where: { externalUserId: 'completed1' } });
     await prisma.conversation.update({
@@ -147,8 +181,7 @@ Would you like to submit a new enquiry?
     });
     await setUpdatedAt('completed1', 25 * 60 * 60 * 1000);
     
-    await conversationService.handleMessage('simulator', 'completed1', 'hi', now); // Get prompt
-
+    await conversationService.handleMessage('simulator', 'completed1', 'BACK', now);
     const res = await conversationService.handleMessage('simulator', 'completed1', '2', now);
     assert.strictEqual(res, 'Your existing enquiry will be kept. Our team can help with it if needed.');
     const updated = await prisma.conversation.findUnique({ where: { id: conv!.id } });

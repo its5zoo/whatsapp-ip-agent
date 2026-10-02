@@ -270,19 +270,31 @@ describe('Database and Service Layer Integration', () => {
     });
     assert.strictEqual(convBefore!.isCompleted, true);
 
-    const prompt = await conversationService.handleMessage('simulator', 'user2', 'Okay');
-    assert.ok(prompt.includes('Would you like to submit a new enquiry?'));
+    const prompt = await conversationService.handleMessage('simulator', 'user2', 'BACK');
+    assert.strictEqual(prompt, `You have already submitted an enquiry with GenioBrain IP Solution.
 
-    const res = await conversationService.handleMessage('simulator', 'user2', '2'); // Trademark
+Would you like to create a new enquiry?
+
+1. Yes – Start a new enquiry
+2. No – Keep my existing enquiry`);
+
+    const leadBeforeRestart = await prisma.lead.findUnique({
+      where: { conversationId: convBefore!.id }
+    });
+    const res = await conversationService.handleMessage('simulator', 'user2', '2');
     assert.strictEqual(res, 'Your existing enquiry will be kept. Our team can help with it if needed.');
 
     const kept = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } }
     });
     assert.strictEqual(kept!.isCompleted, true);
+    const leadAfterKeep = await prisma.lead.findUnique({
+      where: { conversationId: convBefore!.id }
+    });
+    assert.deepStrictEqual(leadAfterKeep, leadBeforeRestart);
 
-    const newPrompt = await conversationService.handleMessage('simulator', 'user2', 'Okay');
-    assert.ok(newPrompt.includes('Would you like to submit a new enquiry?'));
+    const newPrompt = await conversationService.handleMessage('simulator', 'user2', 'BACK');
+    assert.strictEqual(newPrompt, prompt);
 
     const restart = await conversationService.handleMessage('simulator', 'user2', '1');
     assert.ok(restart.includes('Q1. What type of IP protection are you looking for?'));

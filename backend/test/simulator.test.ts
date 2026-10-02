@@ -126,12 +126,10 @@ describe('Simulator REST API', () => {
     });
 
     assert.strictEqual(promptResponse.statusCode, 200);
-    assert.strictEqual(promptResponse.json().response, `You have already submitted an enquiry with GenioBrain IP Solution.
-
-Would you like to submit a new enquiry?
-
-1. Yes – Start a new enquiry
-2. No – Keep my existing enquiry`);
+    assert.strictEqual(
+      promptResponse.json().response,
+      'Your previous enquiry has already been submitted. Please reply HELP to speak to our team, or BACK to start a new enquiry.'
+    );
 
     const leadCountBeforeConfirmation = await prisma.lead.count({
       where: {
@@ -142,6 +140,23 @@ Would you like to submit a new enquiry?
       }
     });
     assert.strictEqual(leadCountBeforeConfirmation, 1);
+
+    const backResponse = await app.inject({
+      method: 'POST',
+      url: '/simulator/message',
+      payload: { userId: 'sim_other', message: 'BACK' }
+    });
+
+    assert.strictEqual(backResponse.statusCode, 200);
+    assert.strictEqual(
+      backResponse.json().response,
+      `You have already submitted an enquiry with GenioBrain IP Solution.
+
+Would you like to create a new enquiry?
+
+1. Yes – Start a new enquiry
+2. No – Keep my existing enquiry`
+    );
 
     const response = await app.inject({
       method: 'POST',

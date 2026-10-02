@@ -75,11 +75,13 @@ Would you like to continue your previous enquiry or start a new one?
 
 const completedPrompt = `You have already submitted an enquiry with GenioBrain IP Solution.
 
-Would you like to submit a new enquiry?
+Would you like to create a new enquiry?
 
 1. Yes – Start a new enquiry
 2. No – Keep my existing enquiry`;
 const completedAcknowledgement = 'Your existing enquiry will be kept. Our team can help with it if needed.';
+const completedClosedResponse =
+  'Your previous enquiry has already been submitted. Please reply HELP to speak to our team, or BACK to start a new enquiry.';
 
 const buildLeadData = (data: ConversationData): LeadCreateInput => ({
   name: data['shared_name'] || '',
@@ -182,6 +184,10 @@ export class ConversationService {
     }
 
     if (pending) {
+      if (pending.continuityPrompt === 'completed' && message.trim().toUpperCase() === 'BACK') {
+        return { response: completedPrompt, notifications };
+      }
+
       if (isCommand(message)) {
         const commandResult = processMessage({ ...state, data: withoutContinuityMeta(data) }, message);
         await conversationRepository.updateState(
@@ -228,9 +234,9 @@ export class ConversationService {
         return { response: completedAcknowledgement, notifications };
       }
 
-      const prompt = pending.continuityPrompt === 'incomplete'
-        ? incompletePrompt(withoutContinuityMeta(data))
-        : completedPrompt;
+      const prompt = pending.continuityPrompt === 'completed'
+        ? completedPrompt
+        : incompletePrompt(withoutContinuityMeta(data));
       await conversationRepository.updateState(
         conversation.id,
         state.currentQuestionId,
@@ -241,7 +247,7 @@ export class ConversationService {
       return { response: `Invalid choice. Please reply with 1 or 2.\n\n${prompt}`, notifications };
     }
 
-    if (conversation.isCompleted && !isCommand(message)) {
+    if (conversation.isCompleted && message.trim().toUpperCase() === 'BACK') {
       await conversationRepository.updateState(
         conversation.id,
         state.currentQuestionId,
@@ -252,9 +258,13 @@ export class ConversationService {
       return { response: completedPrompt, notifications };
     }
 
+    if (conversation.isCompleted && !isCommand(message)) {
+      return { response: completedClosedResponse, notifications };
+    }
+
     if (stale && !isCommand(message)) {
-      const prompt = state.isCompleted ? completedPrompt : incompletePrompt(data);
-      const promptType: ContinuityPrompt = state.isCompleted ? 'completed' : 'incomplete';
+      const prompt = incompletePrompt(data);
+      const promptType: ContinuityPrompt = 'incomplete';
       await conversationRepository.updateState(
         conversation.id,
         state.currentQuestionId,
