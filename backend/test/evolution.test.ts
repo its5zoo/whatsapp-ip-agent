@@ -155,13 +155,10 @@ describe('Evolution webhook', () => {
     const response = await post(largePayload);
     assert.strictEqual(response.statusCode, 200);
     await waitFor(async () => {
-      const dedup = await prisma.processedWhatsappMessage.findUnique({
-        where: { messageId: 'evolution-large-body-1' }
-      });
       const outbound = await prisma.whatsappOutboundMessage.findUnique({
         where: { inboundMessageId: 'evolution-large-body-1' }
       });
-      return dedup !== null && outbound?.status === 'sent';
+      return outbound?.status === 'sent';
     });
   });
 

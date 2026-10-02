@@ -263,24 +263,37 @@ describe('Database and Service Layer Integration', () => {
     }, /Unique constraint failed/);
   });
 
-  test('12. Completed conversation receives a new message and restarts exactly as the existing engine dictates', async () => {
+  test('12. Completed conversation requires explicit confirmation before restarting', async () => {
     // user2 is currently completed
     const convBefore = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } }
     });
     assert.strictEqual(convBefore!.isCompleted, true);
 
-    // Send new message
+    const prompt = await conversationService.handleMessage('simulator', 'user2', 'Okay');
+    assert.ok(prompt.includes('Would you like to submit a new enquiry?'));
+
     const res = await conversationService.handleMessage('simulator', 'user2', '2'); // Trademark
-    assert.ok(res.includes('What do you want to protect?')); // Re-entered flow
+    assert.strictEqual(res, 'Your existing enquiry will be kept. Our team can help with it if needed.');
+
+    const kept = await prisma.conversation.findUnique({
+      where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } }
+    });
+    assert.strictEqual(kept!.isCompleted, true);
+
+    const newPrompt = await conversationService.handleMessage('simulator', 'user2', 'Okay');
+    assert.ok(newPrompt.includes('Would you like to submit a new enquiry?'));
+
+    const restart = await conversationService.handleMessage('simulator', 'user2', '1');
+    assert.ok(restart.includes('Q1. What type of IP protection are you looking for?'));
 
     const convAfter = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } }
     });
     
     assert.strictEqual(convAfter!.isCompleted, false);
-    assert.strictEqual(convAfter!.currentQuestionId, 'trademark_what');
-    assert.strictEqual((convAfter!.data as any)['flowType'], 'trademark');
+    assert.strictEqual(convAfter!.currentQuestionId, 'main_menu');
+    assert.strictEqual((convAfter!.data as any)['flowType'], undefined);
   });
 
 });

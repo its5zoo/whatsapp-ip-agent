@@ -73,10 +73,13 @@ Would you like to continue your previous enquiry or start a new one?
 1. Continue previous enquiry
 2. Start new enquiry`;
 
-const completedPrompt = `You have already submitted an enquiry with us.
+const completedPrompt = `You have already submitted an enquiry with GenioBrain IP Solution.
 
-1. Yes, start a new enquiry
-2. No, I need help with my previous enquiry`;
+Would you like to submit a new enquiry?
+
+1. Yes – Start a new enquiry
+2. No – Keep my existing enquiry`;
+const completedAcknowledgement = 'Your existing enquiry will be kept. Our team can help with it if needed.';
 
 const buildLeadData = (data: ConversationData): LeadCreateInput => ({
   name: data['shared_name'] || '',
@@ -222,7 +225,7 @@ export class ConversationService {
           state.isCompleted,
           db
         );
-        return { response: ENGINE_CONFIG.HELP_INFO, notifications };
+        return { response: completedAcknowledgement, notifications };
       }
 
       const prompt = pending.continuityPrompt === 'incomplete'
@@ -236,6 +239,17 @@ export class ConversationService {
         db
       );
       return { response: `Invalid choice. Please reply with 1 or 2.\n\n${prompt}`, notifications };
+    }
+
+    if (conversation.isCompleted && !isCommand(message)) {
+      await conversationRepository.updateState(
+        conversation.id,
+        state.currentQuestionId,
+        withContinuityMeta(data, 'completed'),
+        state.isCompleted,
+        db
+      );
+      return { response: completedPrompt, notifications };
     }
 
     if (stale && !isCommand(message)) {

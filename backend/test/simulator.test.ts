@@ -119,24 +119,54 @@ describe('Simulator REST API', () => {
   });
 
   test('8. Completed conversation restart behavior', async () => {
+    const promptResponse = await app.inject({
+      method: 'POST',
+      url: '/simulator/message',
+      payload: { userId: 'sim_other', message: 'Okay' }
+    });
+
+    assert.strictEqual(promptResponse.statusCode, 200);
+    assert.strictEqual(promptResponse.json().response, `You have already submitted an enquiry with GenioBrain IP Solution.
+
+Would you like to submit a new enquiry?
+
+1. Yes – Start a new enquiry
+2. No – Keep my existing enquiry`);
+
+    const leadCountBeforeConfirmation = await prisma.lead.count({
+      where: {
+        conversation: {
+          channel: 'simulator',
+          externalUserId: 'sim_other'
+        }
+      }
+    });
+    assert.strictEqual(leadCountBeforeConfirmation, 1);
+
     const response = await app.inject({
       method: 'POST',
       url: '/simulator/message',
-      payload: { userId: 'sim_other', message: '3' } // Start Design (restarts flow)
+      payload: { userId: 'sim_other', message: '1' }
     });
 
     assert.strictEqual(response.statusCode, 200);
-    const body = response.json();
-    if (!body.response.includes('What type of product do you want to register?')) {
-      console.error('Actual response:', body.response);
-    }
-    assert.ok(body.response.includes('What type of product do you want to register?')); // Re-entered flow
-    
+    assert.ok(response.json().response.includes('Q1. What type of IP protection are you looking for?'));
+
     const conv = await prisma.conversation.findUnique({
-      where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'sim_other' } }
+      where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'sim_other' } },
+      include: { lead: true }
     });
     assert.strictEqual(conv!.isCompleted, false);
-    assert.strictEqual(conv!.currentQuestionId, 'design_product');
+    assert.strictEqual(conv!.currentQuestionId, 'main_menu');
+    assert.strictEqual(await prisma.lead.count({
+      where: {
+        conversation: {
+          channel: 'simulator',
+          externalUserId: 'sim_other'
+        }
+      }
+    }), leadCountBeforeConfirmation);
+    assert.ok(conv!.lead);
   });
 
   test('9. Missing userId', async () => {
