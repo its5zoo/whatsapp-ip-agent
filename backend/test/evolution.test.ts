@@ -9,9 +9,12 @@ import { whatsappClient } from '../src/services/whatsappClient';
 import { whatsappDeliveryService } from '../src/services/whatsappDeliveryService';
 import { createWhatsAppProvider } from '../src/whatsapp/providers';
 import { EvolutionWhatsAppProvider, normalizeEvolutionRecipient } from '../src/whatsapp/providers/evolution';
-import { waitFor } from './testUtils';
+import {
+  setWebhookProcessingObserver,
+  waitForWebhookProcessing
+} from '../src/routes/whatsapp';
 
-describe('Evolution webhook', () => {
+describe('Evolution webhook', { concurrency: false }, () => {
   let app: FastifyInstance;
   let originalEnv: typeof env;
   let originalConsoleError: typeof console.error;
@@ -50,6 +53,7 @@ describe('Evolution webhook', () => {
   });
 
   afterEach(async () => {
+    await waitForWebhookProcessing();
     await whatsappDeliveryService.stop();
     mock.restoreAll();
   });
@@ -92,6 +96,26 @@ describe('Evolution webhook', () => {
     });
   }
 
+  async function postAndWaitForProcessing(
+    body: unknown,
+    secret = 'test-webhook-secret'
+  ) {
+    let processing: Promise<void> | undefined;
+    const stopObserving = setWebhookProcessingObserver((promise) => {
+      processing = promise;
+    });
+    try {
+      whatsappDeliveryService.start(createWhatsAppProvider('meta'));
+      const response = await post(body, secret);
+      if (processing) {
+        await processing;
+      }
+      return response;
+    } finally {
+      stopObserving();
+    }
+  }
+
   test('rejects missing or invalid webhook authentication', async () => {
     const missing = await app.inject({
       method: 'POST',
@@ -106,18 +130,9 @@ describe('Evolution webhook', () => {
   });
 
   test('processes valid text and dispatches the exact WhatsApp contract', async () => {
-    const response = await post(payload());
+    const response = await postAndWaitForProcessing(payload());
     assert.strictEqual(response.statusCode, 200);
 
-    await waitFor(async () => {
-      const dedup = await prisma.processedWhatsappMessage.findUnique({
-        where: { messageId: 'evolution-message-1' }
-      });
-      const outbound = await prisma.whatsappOutboundMessage.findUnique({
-        where: { inboundMessageId: 'evolution-message-1' }
-      });
-      return dedup !== null && outbound?.status === 'sent';
-    });
     const dedup = await prisma.processedWhatsappMessage.findUnique({
       where: { messageId: 'evolution-message-1' }
     });
@@ -152,31 +167,24 @@ describe('Evolution webhook', () => {
       metadata: 'x'.repeat(1024 * 1024 - baseLength - 128)
     });
 
-    const response = await post(largePayload);
+    const response = await postAndWaitForProcessing(largePayload);
     assert.strictEqual(response.statusCode, 200);
-    await waitFor(async () => Boolean(await prisma.processedWhatsappMessage.findUnique({
-      where: { messageId: 'evolution-large-body-1' }
-    })));
-    await waitFor(async () => Boolean(await prisma.whatsappOutboundMessage.findUnique({
+    const outbound = await prisma.whatsappOutboundMessage.findUnique({
       where: { inboundMessageId: 'evolution-large-body-1' }
-    })));
-    await waitFor(async () => {
-      const outbound = await prisma.whatsappOutboundMessage.findUnique({
-        where: { inboundMessageId: 'evolution-large-body-1' }
-      });
-      const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
-        (call: any) =>
-          call.arguments[0] === '15551112222@s.whatsapp.net' &&
-          call.arguments[1] === 'mock response'
-      );
-      return outbound?.status === 'sent' && Boolean(providerCall);
     });
+    const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
+      (call: any) =>
+        call.arguments[0] === '15551112222@s.whatsapp.net' &&
+        call.arguments[1] === 'mock response'
+    );
+    assert.strictEqual(outbound?.status, 'sent');
+    assert.ok(providerCall);
   });
 
   test('uses Meta outbound provider for Evolution inbound while Meta is active', async () => {
     const { whatsappClient } = await import('../src/services/whatsappClient');
 
-    const response = await post(payload({
+    const response = await postAndWaitForProcessing(payload({
       key: {
         remoteJid: '15551112222@s.whatsapp.net',
         id: 'evolution-meta-outbound-1',
@@ -184,17 +192,6 @@ describe('Evolution webhook', () => {
       }
     }));
     assert.strictEqual(response.statusCode, 200);
-    await waitFor(async () => {
-      const outbound = await prisma.whatsappOutboundMessage.findUnique({
-        where: { inboundMessageId: 'evolution-meta-outbound-1' }
-      });
-      const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
-        (call: any) =>
-          call.arguments[0] === '15551112222@s.whatsapp.net' &&
-          call.arguments[1] === 'mock response'
-      );
-      return outbound?.status === 'sent' && Boolean(providerCall);
-    });
 
     const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
       (call: any) =>
@@ -209,7 +206,7 @@ describe('Evolution webhook', () => {
   });
 
   test('ignores fromMe events and missing message IDs', async () => {
-    const fromMe = await post(payload({
+    const fromMe = await postAndWaitForProcessing(payload({
       key: {
         remoteJid: '15551112222@s.whatsapp.net',
         id: 'from-me-1',
@@ -218,7 +215,7 @@ describe('Evolution webhook', () => {
     }));
     assert.strictEqual(fromMe.statusCode, 200);
 
-    const missingId = await post(payload({
+    const missingId = await postAndWaitForProcessing(payload({
       key: {
         remoteJid: '15551112222@s.whatsapp.net',
         id: '',
@@ -227,7 +224,6 @@ describe('Evolution webhook', () => {
     }));
     assert.strictEqual(missingId.statusCode, 200);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     assert.strictEqual((conversationService as any).handleMessageInTransaction.mock.calls.length, 0);
     assert.strictEqual(await prisma.processedWhatsappMessage.count(), 0);
   });
@@ -240,7 +236,7 @@ describe('Evolution webhook', () => {
       }
     });
 
-    const response = await post(payload({
+    const response = await postAndWaitForProcessing(payload({
       key: {
         remoteJid: '15551112222@s.whatsapp.net',
         id: 'evolution-duplicate-1',
@@ -249,12 +245,11 @@ describe('Evolution webhook', () => {
     }));
     assert.strictEqual(response.statusCode, 200);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
     assert.strictEqual((conversationService as any).handleMessageInTransaction.mock.calls.length, 0);
   });
 
   test('processes unsupported media through existing unsupported handling', async () => {
-    const response = await post(payload({
+    const response = await postAndWaitForProcessing(payload({
       key: {
         remoteJid: '15551112222@s.whatsapp.net',
         id: 'evolution-image-1',
@@ -265,23 +260,6 @@ describe('Evolution webhook', () => {
     }));
     assert.strictEqual(response.statusCode, 200);
 
-    await waitFor(async () => Boolean(await prisma.processedWhatsappMessage.findUnique({
-      where: { messageId: 'evolution-image-1' }
-    })));
-    await waitFor(async () => Boolean(await prisma.whatsappOutboundMessage.findUnique({
-      where: { inboundMessageId: 'evolution-image-1' }
-    })));
-    await waitFor(async () => {
-      const outbound = await prisma.whatsappOutboundMessage.findUnique({
-        where: { inboundMessageId: 'evolution-image-1' }
-      });
-      const providerCall = (whatsappClient.sendTextMessage as any).mock.calls.find(
-        (call: any) =>
-          call.arguments[0] === '15551112222@s.whatsapp.net' &&
-          call.arguments[1] === env.WHATSAPP_REPLY_UNSUPPORTED
-      );
-      return outbound?.status === 'sent' && Boolean(providerCall);
-    });
     const dedup = await prisma.processedWhatsappMessage.findUnique({
       where: { messageId: 'evolution-image-1' }
     });

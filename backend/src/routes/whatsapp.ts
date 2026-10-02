@@ -7,6 +7,25 @@ import prisma from '../db/prisma';
 import { whatsappDeliveryService } from '../services/whatsappDeliveryService';
 
 const WHATSAPP_WEBHOOK_BODY_LIMIT = 1024 * 1024;
+const pendingWebhookProcessing = new Set<Promise<void>>();
+let webhookProcessingObserver: ((processing: Promise<void>) => void) | undefined;
+
+export async function waitForWebhookProcessing(): Promise<void> {
+  while (pendingWebhookProcessing.size > 0) {
+    await Promise.allSettled([...pendingWebhookProcessing]);
+  }
+}
+
+export function setWebhookProcessingObserver(
+  observer: ((processing: Promise<void>) => void) | undefined
+): () => void {
+  webhookProcessingObserver = observer;
+  return () => {
+    if (webhookProcessingObserver === observer) {
+      webhookProcessingObserver = undefined;
+    }
+  };
+}
 
 export const whatsappRoutes: FastifyPluginAsync = async (server) => {
   const metaProvider = createWhatsAppProvider('meta');
@@ -68,9 +87,14 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
     reply.status(200).send();
 
     // Process asynchronously (fire-and-forget)
-    processWebhookPayload('meta', metaProvider, payload).catch((err) => {
-      server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing WhatsApp webhook payload');
-    });
+    const processing = processWebhookPayload('meta', metaProvider, payload);
+    pendingWebhookProcessing.add(processing);
+    webhookProcessingObserver?.(processing);
+    void processing
+      .catch((err) => {
+        server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing WhatsApp webhook payload');
+      })
+      .finally(() => pendingWebhookProcessing.delete(processing));
 
     return reply;
     });
@@ -95,9 +119,14 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
       }
 
       reply.status(200).send();
-      processWebhookPayload('evolution', evolutionProvider, payload).catch((err) => {
-        server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing Evolution webhook payload');
-      });
+      const processing = processWebhookPayload('evolution', evolutionProvider, payload);
+      pendingWebhookProcessing.add(processing);
+      webhookProcessingObserver?.(processing);
+      void processing
+        .catch((err) => {
+          server.log.error({ err: err instanceof Error ? err.message : String(err) }, 'Error processing Evolution webhook payload');
+        })
+        .finally(() => pendingWebhookProcessing.delete(processing));
       return reply;
     });
   }

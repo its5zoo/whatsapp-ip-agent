@@ -21,7 +21,7 @@ const provider = (sendTextMessage: WhatsAppProvider['sendTextMessage']): WhatsAp
   sendTextMessage
 });
 
-describe('WhatsApp outbound delivery', () => {
+describe('WhatsApp outbound delivery', { concurrency: 1 }, () => {
   let whatsappDeliveryService: WhatsappDeliveryService;
 
   before(async () => {
