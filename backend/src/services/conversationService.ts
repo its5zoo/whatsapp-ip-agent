@@ -8,6 +8,10 @@ import { QUESTIONNAIRE } from '../engine/questions';
 import { n8nNotifier } from './n8nNotifier';
 import { ENGINE_CONFIG } from '../engine/constants';
 import { getQuestionResponse } from '../engine/engine';
+import { LeadCreateInput } from '../db/repositories/leadRepository';
+import { Prisma } from '@prisma/client';
+import prisma from '../db/prisma';
+import { whatsappOutboundMessageRepository } from '../db/repositories/whatsappOutboundMessageRepository';
 
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const CONTINUITY_META_KEY = '_conversationMeta';
@@ -74,14 +78,78 @@ const completedPrompt = `You have already submitted an enquiry with us.
 1. Yes, start a new enquiry
 2. No, I need help with my previous enquiry`;
 
+const buildLeadData = (data: ConversationData): LeadCreateInput => ({
+  name: data['shared_name'] || '',
+  organization: data['shared_org'] || '',
+  email: data['shared_email'] || '',
+  mobile: data['shared_mobile'] || '',
+  city: data['shared_city'] || '',
+  preferredComm: data['shared_comm'] || '',
+  phoneCallTime: data['shared_phone_time'] || null,
+  flowType: data['flowType'] || 'unknown',
+  answers: data as any
+});
+
 export class ConversationService {
-  async handleMessage(channel: string, externalUserId: string, message: string, now = new Date()): Promise<string> {
+  async handleMessage(
+    channel: string,
+    externalUserId: string,
+    message: string,
+    now = new Date(),
+    messageId?: string
+  ): Promise<string> {
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${channel}:${externalUserId}`}, 0))`;
+
+      if (messageId) {
+        try {
+          await tx.processedWhatsappMessage.create({
+            data: { messageId, waId: externalUserId }
+          });
+        } catch (error: any) {
+          if (error.code === 'P2002') {
+            return null;
+          }
+          throw error;
+        }
+      }
+
+      const result = await this.handleMessageInTransaction(channel, externalUserId, message, now, tx);
+      if (messageId && result.response) {
+        await whatsappOutboundMessageRepository.create({
+          inboundMessageId: messageId,
+          waId: externalUserId,
+          text: result.response
+        }, tx);
+      }
+      return result;
+    });
+
+    if (!result) {
+      return '';
+    }
+
+    for (const lead of result.notifications) {
+      n8nNotifier.notifyNewLead(lead).catch(() => {});
+    }
+
+    return result.response;
+  }
+
+  private async handleMessageInTransaction(
+    channel: string,
+    externalUserId: string,
+    message: string,
+    now: Date,
+    db: Prisma.TransactionClient
+  ): Promise<{ response: string; notifications: any[] }> {
+    const notifications: any[] = [];
     // 1. Find or create conversation
-    let conversation = await conversationRepository.findByChannelAndUser(channel, externalUserId);
+    let conversation = await conversationRepository.findByChannelAndUser(channel, externalUserId, db);
     const isNewConversation = !conversation;
     
     if (!conversation) {
-      conversation = await conversationRepository.create(channel, externalUserId);
+      conversation = await conversationRepository.create(channel, externalUserId, db);
     }
 
     // 2. Reconstruct ConversationState
@@ -95,10 +163,19 @@ export class ConversationService {
     const pending = getContinuityMeta(data);
     const stale = now.getTime() - conversation.updatedAt.getTime() >= STALE_AFTER_MS;
 
+    if (conversation.isCompleted && !(await leadRepository.findByConversationId(conversation.id, db))) {
+      const recoveredLead = await leadRepository.upsertFromConversation(
+        conversation.id,
+        buildLeadData(withoutContinuityMeta(data)),
+        db
+      );
+      notifications.push(recoveredLead);
+    }
+
     if (isNewConversation) {
       const response = `${WELCOME_MESSAGE}\n\n${getQuestionResponse(QUESTIONNAIRE.main_menu)}`;
-      await conversationRepository.updateState(conversation.id, 'main_menu', {}, false);
-      return response;
+      await conversationRepository.updateState(conversation.id, 'main_menu', {}, false, db);
+      return { response, notifications };
     }
 
     if (pending) {
@@ -107,10 +184,11 @@ export class ConversationService {
         await conversationRepository.updateState(
           conversation.id,
           commandResult.state.currentQuestionId,
-          withContinuityMeta(commandResult.state.data, pending.continuityPrompt),
-          commandResult.state.isCompleted
+          withoutContinuityMeta(commandResult.state.data),
+          commandResult.state.isCompleted,
+          db
         );
-        return commandResult.response;
+        return { response: commandResult.response, notifications };
       }
 
       const input = message.trim();
@@ -120,29 +198,31 @@ export class ConversationService {
             conversation.id,
             state.currentQuestionId,
             withoutContinuityMeta(data),
-            false
+            false,
+            db
           );
           const currentQuestion = QUESTIONNAIRE[state.currentQuestionId || 'main_menu'];
-          return getQuestionResponse(currentQuestion || QUESTIONNAIRE.main_menu);
+          return { response: getQuestionResponse(currentQuestion || QUESTIONNAIRE.main_menu), notifications };
         }
 
-        await conversationRepository.updateState(conversation.id, 'main_menu', {}, false);
-        return getQuestionResponse(QUESTIONNAIRE.main_menu);
+        await conversationRepository.updateState(conversation.id, 'main_menu', {}, false, db);
+        return { response: getQuestionResponse(QUESTIONNAIRE.main_menu), notifications };
       }
 
       if (input === '2') {
         if (pending.continuityPrompt === 'incomplete') {
-          await conversationRepository.updateState(conversation.id, 'main_menu', {}, false);
-          return getQuestionResponse(QUESTIONNAIRE.main_menu);
+          await conversationRepository.updateState(conversation.id, 'main_menu', {}, false, db);
+          return { response: getQuestionResponse(QUESTIONNAIRE.main_menu), notifications };
         }
 
         await conversationRepository.updateState(
           conversation.id,
           state.currentQuestionId,
           withoutContinuityMeta(data),
-          state.isCompleted
+          state.isCompleted,
+          db
         );
-        return ENGINE_CONFIG.HELP_INFO;
+        return { response: ENGINE_CONFIG.HELP_INFO, notifications };
       }
 
       const prompt = pending.continuityPrompt === 'incomplete'
@@ -152,9 +232,10 @@ export class ConversationService {
         conversation.id,
         state.currentQuestionId,
         data,
-        state.isCompleted
+        state.isCompleted,
+        db
       );
-      return `Invalid choice. Please reply with 1 or 2.\n\n${prompt}`;
+      return { response: `Invalid choice. Please reply with 1 or 2.\n\n${prompt}`, notifications };
     }
 
     if (stale && !isCommand(message)) {
@@ -164,9 +245,10 @@ export class ConversationService {
         conversation.id,
         state.currentQuestionId,
         withContinuityMeta(data, promptType),
-        state.isCompleted
+        state.isCompleted,
+        db
       );
-      return prompt;
+      return { response: prompt, notifications };
     }
 
     // 3. Call processMessage (engine logic)
@@ -200,37 +282,27 @@ export class ConversationService {
       conversation.id,
       result.state.currentQuestionId,
       result.state.data,
-      result.state.isCompleted
+      result.state.isCompleted,
+      db
     );
 
     // 5. If completed, extract Lead fields and upsert Lead
     if (result.completed) {
       const leadAnswers = withoutContinuityMeta(result.state.data);
-      
-      const leadData = {
-        name: leadAnswers['shared_name'] || '',
-        organization: leadAnswers['shared_org'] || '',
-        email: leadAnswers['shared_email'] || '',
-        mobile: leadAnswers['shared_mobile'] || '',
-        city: leadAnswers['shared_city'] || '',
-        preferredComm: leadAnswers['shared_comm'] || '',
-        phoneCallTime: leadAnswers['shared_phone_time'] || null,
-        flowType: leadAnswers['flowType'] || 'unknown',
-        answers: leadAnswers as any
-      };
-
-      const lead = await leadRepository.upsertFromConversation(conversation.id, leadData);
+      const lead = await leadRepository.upsertFromConversation(
+        conversation.id,
+        buildLeadData(leadAnswers),
+        db
+      );
 
       // Fire n8n only if this is the moment the conversation became completed
       if (!conversation.isCompleted) {
-        n8nNotifier.notifyNewLead(lead).catch(err => {
-          // Fire-and-forget: already logged inside notifier, but catch here just in case
-        });
+        notifications.push(lead);
       }
     }
 
     // 6. Return response
-    return result.response;
+    return { response: result.response, notifications };
   }
 }
 

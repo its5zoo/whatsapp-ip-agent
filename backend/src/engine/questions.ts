@@ -164,7 +164,7 @@ export const QUESTIONNAIRE: Record<string, QuestionDefinition> = {
   // NOT SURE FLOW
   notsure_desc: {
     id: 'notsure_desc',
-    text: "Q2. Please tell us briefly about what you want to protect.\n\nFor example:\n• A new invention\n• A brand or business name\n• A product's unique appearance\n• Software or creative content\n• A research outcome\n• A technology\n• Something else\n\nPlease describe it in 2–3 sentences.",
+    text: "No problem! Our IP professionals can help identify the appropriate form of IP protection.\n\nQ2. Please tell us briefly about what you want to protect.\n\nFor example:\n• A new invention\n• A brand or business name\n• A product's unique appearance\n• Software or creative content\n• A research outcome\n• A technology\n• Something else\n\nPlease describe it in 2–3 sentences.",
     type: 'text',
     nextState: 'shared_name'
   },

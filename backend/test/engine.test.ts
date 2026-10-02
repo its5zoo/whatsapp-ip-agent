@@ -3,6 +3,7 @@ import * as assert from 'node:assert';
 import { processMessage } from '../src/engine/engine';
 import { ConversationState } from '../src/engine/types';
 import { ENGINE_CONFIG } from '../src/engine/constants';
+import { QUESTIONNAIRE } from '../src/engine/questions';
 
 const initialState = (): ConversationState => ({
   currentQuestionId: null,
@@ -44,6 +45,16 @@ describe('Questionnaire Engine', () => {
     let res = processMessage(initialState(), '5');
     assert.strictEqual(res.state.currentQuestionId, 'notsure_desc');
     assert.strictEqual(res.data.flowType, 'notsure');
+    assert.strictEqual(
+      res.response,
+      QUESTIONNAIRE.notsure_desc.text
+    );
+    assert.ok(res.response.startsWith(
+      'No problem! Our IP professionals can help identify the appropriate form of IP protection.\n\n'
+    ));
+    assert.ok(res.response.includes(
+      'Q2. Please tell us briefly about what you want to protect.'
+    ));
   });
 
   test('6. Valid numbered choice advances', () => {

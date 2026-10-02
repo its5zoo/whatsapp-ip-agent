@@ -7,6 +7,8 @@ import crypto from 'node:crypto';
 import { conversationService } from '../src/services/conversationService';
 import { whatsappClient } from '../src/services/whatsappClient';
 import prisma from '../src/db/prisma';
+import { whatsappDeliveryService } from '../src/services/whatsappDeliveryService';
+import { waitFor } from './testUtils';
 
 describe('whatsappRoutes', () => {
   let app: FastifyInstance;
@@ -30,10 +32,14 @@ describe('whatsappRoutes', () => {
 
   beforeEach(async () => {
     await prisma.processedWhatsappMessage.deleteMany({});
+    await prisma.whatsappOutboundMessage.deleteMany({});
     await prisma.lead.deleteMany({});
     await prisma.conversation.deleteMany({});
-    mock.method(conversationService, 'handleMessage', async () => 'mock response');
-    mock.method(whatsappClient, 'sendTextMessage', async () => {});
+    mock.method(conversationService as any, 'handleMessageInTransaction', async () => ({
+      response: 'mock response',
+      notifications: []
+    }));
+    mock.method(whatsappClient, 'sendTextMessage', async () => ({ outcome: 'accepted' }));
     mock.method(app.log, 'error', () => {});
     mock.method(app.log, 'info', () => {});
     mock.method(app.log, 'warn', () => {});
@@ -162,17 +168,22 @@ describe('whatsappRoutes', () => {
 
       assert.strictEqual(response.statusCode, 200);
 
-      // Give async processing time to finish
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitFor(async () => {
+        const dedup = await prisma.processedWhatsappMessage.findUnique({
+          where: { messageId: 'wamid.test1' }
+        });
+        const calls = (whatsappClient.sendTextMessage as any).mock.calls;
+        return dedup !== null && calls.length === 1;
+      });
 
       // Verify db insertion
       const dedup = await prisma.processedWhatsappMessage.findUnique({ where: { messageId: 'wamid.test1' }});
       assert.ok(dedup !== null);
       assert.strictEqual(dedup?.waId, '123456');
 
-      const handleMessageCalls = (conversationService.handleMessage as any).mock.calls;
+      const handleMessageCalls = (conversationService as any).handleMessageInTransaction.mock.calls;
       assert.strictEqual(handleMessageCalls.length, 1);
-      assert.deepStrictEqual(handleMessageCalls[0].arguments, ['whatsapp', '123456', 'hello']);
+      assert.deepStrictEqual(handleMessageCalls[0].arguments.slice(0, 3), ['whatsapp', '123456', 'hello']);
       
       const sendTextMessageCalls = (whatsappClient.sendTextMessage as any).mock.calls;
       assert.strictEqual(sendTextMessageCalls.length, 1);
@@ -267,8 +278,63 @@ describe('whatsappRoutes', () => {
       assert.strictEqual(response.statusCode, 200);
 
       await new Promise(resolve => setTimeout(resolve, 50));
-      const handleMessageCalls = (conversationService.handleMessage as any).mock.calls;
+      const handleMessageCalls = (conversationService as any).handleMessageInTransaction.mock.calls;
       assert.strictEqual(handleMessageCalls.length, 0);
+    });
+
+    test('rolls back message deduplication when processing fails', async () => {
+      let attempts = 0;
+      mock.restoreAll();
+      mock.method(conversationService as any, 'handleMessageInTransaction', async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('temporary processing failure');
+        }
+        return { response: 'mock response', notifications: [] };
+      });
+      mock.method(whatsappClient, 'sendTextMessage', async () => ({ outcome: 'accepted' }));
+      mock.method(app.log, 'error', () => {});
+      mock.method(app.log, 'info', () => {});
+      mock.method(app.log, 'warn', () => {});
+
+      const payload = {
+        object: 'whatsapp_business_account',
+        entry: [{
+          id: '123',
+          changes: [{
+            field: 'messages',
+            value: {
+              messaging_product: 'whatsapp',
+              metadata: { display_phone_number: '1', phone_number_id: '2' },
+              contacts: [{ profile: { name: 'Test' }, wa_id: '123456' }],
+              messages: [{ from: '123456', id: 'wamid.retry1', timestamp: '123', type: 'text', text: { body: 'hello' } }]
+            }
+          }]
+        }]
+      };
+      const payloadString = JSON.stringify(payload);
+      const request = {
+        method: 'POST' as const,
+        url: '/webhook/whatsapp',
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signPayload(payloadString)
+        },
+        payload: payloadString
+      };
+
+      assert.strictEqual((await app.inject(request)).statusCode, 200);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assert.strictEqual(await prisma.processedWhatsappMessage.count({
+        where: { messageId: 'wamid.retry1' }
+      }), 0);
+
+      assert.strictEqual((await app.inject(request)).statusCode, 200);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assert.strictEqual(attempts, 2);
+      assert.strictEqual(await prisma.processedWhatsappMessage.count({
+        where: { messageId: 'wamid.retry1' }
+      }), 1);
     });
 
     test('should return 200 and process unsupported media by sending default reply', async () => {
@@ -301,12 +367,21 @@ describe('whatsappRoutes', () => {
 
       assert.strictEqual(response.statusCode, 200);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitFor(async () => {
+        const outbound = await prisma.whatsappOutboundMessage.findUnique({
+          where: { inboundMessageId: 'wamid.image1' }
+        });
+        return outbound?.status === 'sent';
+      });
 
       const dedup = await prisma.processedWhatsappMessage.findUnique({ where: { messageId: 'wamid.image1' }});
       assert.ok(dedup !== null);
+      const outbound = await prisma.whatsappOutboundMessage.findUnique({
+        where: { inboundMessageId: 'wamid.image1' }
+      });
+      assert.strictEqual(outbound?.status, 'sent');
 
-      const handleMessageCalls = (conversationService.handleMessage as any).mock.calls;
+      const handleMessageCalls = (conversationService as any).handleMessageInTransaction.mock.calls;
       assert.strictEqual(handleMessageCalls.length, 0);
       
       const sendTextMessageCalls = (whatsappClient.sendTextMessage as any).mock.calls;
@@ -348,7 +423,7 @@ describe('whatsappRoutes', () => {
       const dedup = await prisma.processedWhatsappMessage.findUnique({ where: { messageId: 'wamid.status1' }});
       assert.strictEqual(dedup, null); // Status events are not deduplicated or processed
 
-      const handleMessageCalls = (conversationService.handleMessage as any).mock.calls;
+      const handleMessageCalls = (conversationService as any).handleMessageInTransaction.mock.calls;
       assert.strictEqual(handleMessageCalls.length, 0);
     });
 
@@ -386,7 +461,7 @@ describe('whatsappRoutes', () => {
       assert.strictEqual(dedup, null);
 
       // Verify that it was silently ignored rather than throwing an unhandled rejection
-      const handleMessageCalls = (conversationService.handleMessage as any).mock.calls;
+      const handleMessageCalls = (conversationService as any).handleMessageInTransaction.mock.calls;
       assert.strictEqual(handleMessageCalls.length, 0);
     });
 

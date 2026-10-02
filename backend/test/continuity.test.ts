@@ -159,4 +159,49 @@ describe('Conversation Continuity', () => {
     assert.ok(!res.includes('private@example.com'));
   });
 
+  test('12. Global commands clear stale continuity prompts', async () => {
+    const cases = [
+      { command: 'BACK', expectedResponse: 'Q1. What type of IP protection are you looking for?', nextAnswer: 'Q2. What best describes your invention?' },
+      { command: 'HELP', expectedResponse: 'HELP – Speak to our team', nextAnswer: 'Q3. What stage is your invention currently at?' },
+      { command: 'SERVICES', expectedResponse: 'SERVICES – Explore our IP services', nextAnswer: 'Q3. What stage is your invention currently at?' },
+      { command: 'CONSULTATION', expectedResponse: 'CONSULTATION – Request a consultation', nextAnswer: 'Q3. What stage is your invention currently at?' }
+    ];
+
+    for (const [index, testCase] of cases.entries()) {
+      const externalUserId = `stale-command-${index}`;
+      await prisma.conversation.create({
+        data: {
+          channel: 'simulator',
+          externalUserId,
+          currentQuestionId: 'patent_type',
+          data: { flowType: 'patent' },
+          isCompleted: false,
+          updatedAt: new Date(now.getTime() - 25 * 60 * 60 * 1000)
+        }
+      });
+
+      const commandResponse = await conversationService.handleMessage(
+        'simulator',
+        externalUserId,
+        testCase.command,
+        now
+      );
+      assert.ok(commandResponse.includes(testCase.expectedResponse));
+
+      const conversation = await prisma.conversation.findUnique({
+        where: { channel_externalUserId: { channel: 'simulator', externalUserId } }
+      });
+      assert.deepStrictEqual(conversation?.data, { flowType: 'patent' });
+
+      const nextResponse = await conversationService.handleMessage(
+        'simulator',
+        externalUserId,
+        '1',
+        now
+      );
+      assert.ok(nextResponse.includes(testCase.nextAnswer));
+      assert.ok(!nextResponse.includes('Continue previous enquiry'));
+    }
+  });
+
 });

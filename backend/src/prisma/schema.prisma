@@ -54,3 +54,21 @@ model ProcessedWhatsappMessage {
 
   @@map("processed_whatsapp_messages")
 }
+
+model WhatsappOutboundMessage {
+  id               String    @id @default(uuid())
+  inboundMessageId String    @unique @map("inbound_message_id")
+  waId             String    @map("wa_id")
+  text             String
+  status           String
+  attempts         Int       @default(0)
+  nextAttemptAt    DateTime  @default(now()) @map("next_attempt_at")
+  sendingAt        DateTime? @map("sending_at")
+  sentAt           DateTime? @map("sent_at")
+  lastError        String?   @map("last_error")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, nextAttemptAt])
+  @@map("whatsapp_outbound_messages")
+}

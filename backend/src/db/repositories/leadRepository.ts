@@ -1,5 +1,5 @@
 import prisma from '../prisma';
-import { Lead } from '@prisma/client';
+import { Lead, Prisma, PrismaClient } from '@prisma/client';
 
 export interface LeadCreateInput {
   name: string;
@@ -13,9 +13,15 @@ export interface LeadCreateInput {
   answers: any;
 }
 
+type DatabaseClient = PrismaClient | Prisma.TransactionClient;
+
 export class LeadRepository {
-  async upsertFromConversation(conversationId: string, leadData: LeadCreateInput): Promise<Lead> {
-    return prisma.lead.upsert({
+  async upsertFromConversation(
+    conversationId: string,
+    leadData: LeadCreateInput,
+    db: DatabaseClient = prisma
+  ): Promise<Lead> {
+    return db.lead.upsert({
       where: { conversationId },
       create: {
         conversationId,
@@ -25,8 +31,11 @@ export class LeadRepository {
     });
   }
 
-  async findByConversationId(conversationId: string): Promise<Lead | null> {
-    return prisma.lead.findUnique({
+  async findByConversationId(
+    conversationId: string,
+    db: DatabaseClient = prisma
+  ): Promise<Lead | null> {
+    return db.lead.findUnique({
       where: { conversationId }
     });
   }

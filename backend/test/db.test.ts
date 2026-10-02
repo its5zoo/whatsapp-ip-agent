@@ -1,7 +1,8 @@
-import { test, describe, before, after } from 'node:test';
+import { test, describe, before, after, mock } from 'node:test';
 import * as assert from 'node:assert';
 import prisma from '../src/db/prisma';
 import { conversationService } from '../src/services/conversationService';
+import { leadRepository } from '../src/db/repositories/leadRepository';
 
 // Test safety guard
 if (!process.env.DATABASE_URL?.includes('_test')) {
@@ -141,6 +142,117 @@ describe('Database and Service Layer Integration', () => {
       where: { conversationId: conv!.id }
     });
     assert.strictEqual(lead!.name, 'John Updated');
+  });
+
+  test('8a. Completed conversation repairs a Lead after transient persistence failure', async () => {
+    const externalUserId = 'lead-recovery-user';
+    const conversation = await prisma.conversation.create({
+      data: {
+        channel: 'simulator',
+        externalUserId,
+        currentQuestionId: 'shared_comm',
+        data: {
+          flowType: 'patent',
+          shared_name: 'Recovery User',
+          shared_org: 'Recovery Org',
+          shared_email: 'recovery@example.com',
+          shared_mobile: '123456',
+          shared_city: 'New York'
+        },
+        isCompleted: false
+      }
+    });
+    const originalUpsert = leadRepository.upsertFromConversation.bind(leadRepository);
+    let shouldFail = true;
+    mock.method(leadRepository, 'upsertFromConversation', async (...args) => {
+      if (shouldFail) {
+        shouldFail = false;
+        throw new Error('temporary lead persistence failure');
+      }
+      return originalUpsert(...args);
+    });
+
+    await assert.rejects(
+      conversationService.handleMessage('simulator', externalUserId, '3'),
+      /temporary lead persistence failure/
+    );
+
+    const failedConversation = await prisma.conversation.findUnique({
+      where: { id: conversation.id }
+    });
+    assert.strictEqual(failedConversation?.isCompleted, false);
+    assert.strictEqual(await prisma.lead.findUnique({ where: { conversationId: conversation.id } }), null);
+
+    await conversationService.handleMessage('simulator', externalUserId, '3');
+    const recoveredLead = await prisma.lead.findUnique({
+      where: { conversationId: conversation.id }
+    });
+    assert.strictEqual(recoveredLead?.email, 'recovery@example.com');
+    mock.restoreAll();
+  });
+
+  test('13. Concurrent first messages serialize into one conversation', async () => {
+    const userId = 'concurrent-first-user';
+    await Promise.all([
+      conversationService.handleMessage('simulator', userId, 'hi'),
+      conversationService.handleMessage('simulator', userId, 'HELP')
+    ]);
+
+    const conversations = await prisma.conversation.findMany({
+      where: { channel: 'simulator', externalUserId: userId }
+    });
+    assert.strictEqual(conversations.length, 1);
+    assert.strictEqual(conversations[0].currentQuestionId, 'main_menu');
+  });
+
+  test('14. Concurrent existing messages preserve a serialized state transition', async () => {
+    const userId = 'concurrent-existing-user';
+    await conversationService.handleMessage('simulator', userId, 'hi');
+
+    await Promise.all([
+      conversationService.handleMessage('simulator', userId, '1'),
+      conversationService.handleMessage('simulator', userId, '2')
+    ]);
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { channel_externalUserId: { channel: 'simulator', externalUserId: userId } }
+    });
+    assert.ok(conversation);
+    assert.ok(conversation.currentQuestionId !== 'main_menu');
+    assert.ok(['patent', 'trademark'].includes((conversation.data as any).flowType));
+  });
+
+  test('15. Concurrent completion creates one consistent Lead', async () => {
+    const userId = 'concurrent-completion-user';
+    const conversation = await prisma.conversation.create({
+      data: {
+        channel: 'simulator',
+        externalUserId: userId,
+        currentQuestionId: 'shared_comm',
+        data: {
+          flowType: 'patent',
+          shared_name: 'Concurrent User',
+          shared_org: 'Concurrent Org',
+          shared_email: 'concurrent@example.com',
+          shared_mobile: '123456',
+          shared_city: 'New York'
+        },
+        isCompleted: false
+      }
+    });
+
+    await Promise.all([
+      conversationService.handleMessage('simulator', userId, '3'),
+      conversationService.handleMessage('simulator', userId, 'HELP')
+    ]);
+
+    const completed = await prisma.conversation.findUnique({
+      where: { id: conversation.id },
+      include: { lead: true }
+    });
+    assert.strictEqual(completed?.isCompleted, true);
+    assert.ok(completed?.lead);
+    assert.strictEqual(await prisma.lead.count({ where: { conversationId: conversation.id } }), 1);
   });
 
   test('10. Duplicate conversation identity is rejected', async () => {

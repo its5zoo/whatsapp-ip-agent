@@ -5,7 +5,11 @@ import { FastifyInstance } from 'fastify';
 import { env } from '../src/config/env';
 import { conversationService } from '../src/services/conversationService';
 import prisma from '../src/db/prisma';
+import { whatsappClient } from '../src/services/whatsappClient';
+import { whatsappDeliveryService } from '../src/services/whatsappDeliveryService';
+import { createWhatsAppProvider } from '../src/whatsapp/providers';
 import { EvolutionWhatsAppProvider, normalizeEvolutionRecipient } from '../src/whatsapp/providers/evolution';
+import { waitFor } from './testUtils';
 
 describe('Evolution webhook', () => {
   let app: FastifyInstance;
@@ -32,15 +36,26 @@ describe('Evolution webhook', () => {
 
   beforeEach(async () => {
     await prisma.processedWhatsappMessage.deleteMany({});
-    mock.method(conversationService, 'handleMessage', async () => 'mock response');
-    mock.method((await import('../src/services/whatsappClient')).whatsappClient, 'sendTextMessage', async () => {});
+    await prisma.whatsappOutboundMessage.deleteMany({});
+    await prisma.lead.deleteMany({});
+    await prisma.conversation.deleteMany({});
+    mock.method(conversationService as any, 'handleMessageInTransaction', async () => ({
+      response: 'mock response',
+      notifications: []
+    }));
+    mock.method((await import('../src/services/whatsappClient')).whatsappClient, 'sendTextMessage', async () => ({ outcome: 'accepted' }));
     mock.method(app.log, 'error', () => {});
     mock.method(app.log, 'warn', () => {});
     mock.method(console, 'error', () => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await whatsappDeliveryService.stop();
     mock.restoreAll();
+  });
+
+  beforeEach(() => {
+    whatsappDeliveryService.start(createWhatsAppProvider('meta'));
   });
 
   after(async () => {
@@ -94,19 +109,60 @@ describe('Evolution webhook', () => {
     const response = await post(payload());
     assert.strictEqual(response.statusCode, 200);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await waitFor(async () => {
+      const dedup = await prisma.processedWhatsappMessage.findUnique({
+        where: { messageId: 'evolution-message-1' }
+      });
+      const outbound = await prisma.whatsappOutboundMessage.findUnique({
+        where: { inboundMessageId: 'evolution-message-1' }
+      });
+      return dedup !== null && outbound?.status === 'sent';
+    });
     const dedup = await prisma.processedWhatsappMessage.findUnique({
       where: { messageId: 'evolution-message-1' }
     });
     assert.ok(dedup);
     assert.strictEqual(dedup?.waId, '15551112222@s.whatsapp.net');
 
-    const calls = (conversationService.handleMessage as any).mock.calls;
-    assert.deepStrictEqual(calls[0].arguments, [
+    const calls = (conversationService as any).handleMessageInTransaction.mock.calls;
+    const responseCall = calls.find((call: any) => call.arguments[1] === '15551112222@s.whatsapp.net');
+    assert.ok(responseCall);
+    assert.deepStrictEqual(responseCall.arguments.slice(0, 3), [
       'whatsapp',
       '15551112222@s.whatsapp.net',
       'hello from Evolution'
     ]);
+  });
+
+  test('accepts a valid webhook body near the 1 MiB route limit', async () => {
+    const basePayload = payload({
+      key: {
+        remoteJid: '15551112222@s.whatsapp.net',
+        id: 'evolution-large-body-1',
+        fromMe: false
+      }
+    });
+    const baseLength = Buffer.byteLength(JSON.stringify(basePayload));
+    const largePayload = payload({
+      key: {
+        remoteJid: '15551112222@s.whatsapp.net',
+        id: 'evolution-large-body-1',
+        fromMe: false
+      },
+      metadata: 'x'.repeat(1024 * 1024 - baseLength - 128)
+    });
+
+    const response = await post(largePayload);
+    assert.strictEqual(response.statusCode, 200);
+    await waitFor(async () => {
+      const dedup = await prisma.processedWhatsappMessage.findUnique({
+        where: { messageId: 'evolution-large-body-1' }
+      });
+      const outbound = await prisma.whatsappOutboundMessage.findUnique({
+        where: { inboundMessageId: 'evolution-large-body-1' }
+      });
+      return dedup !== null && outbound?.status === 'sent';
+    });
   });
 
   test('uses Meta outbound provider for Evolution inbound while Meta is active', async () => {
@@ -120,9 +176,16 @@ describe('Evolution webhook', () => {
       }
     }));
     assert.strictEqual(response.statusCode, 200);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await waitFor(async () => {
+      const outbound = await prisma.whatsappOutboundMessage.findUnique({
+        where: { inboundMessageId: 'evolution-meta-outbound-1' }
+      });
+      const calls = (whatsappClient.sendTextMessage as any).mock.calls;
+      return outbound?.status === 'sent' || calls.length > 0;
+    });
 
     const calls = (whatsappClient.sendTextMessage as any).mock.calls;
+    assert.ok(calls.length > 0);
     assert.deepStrictEqual(calls[0].arguments, [
       '15551112222@s.whatsapp.net',
       'mock response'
@@ -149,7 +212,7 @@ describe('Evolution webhook', () => {
     assert.strictEqual(missingId.statusCode, 200);
 
     await new Promise(resolve => setTimeout(resolve, 50));
-    assert.strictEqual((conversationService.handleMessage as any).mock.calls.length, 0);
+    assert.strictEqual((conversationService as any).handleMessageInTransaction.mock.calls.length, 0);
     assert.strictEqual(await prisma.processedWhatsappMessage.count(), 0);
   });
 
@@ -171,7 +234,7 @@ describe('Evolution webhook', () => {
     assert.strictEqual(response.statusCode, 200);
 
     await new Promise(resolve => setTimeout(resolve, 50));
-    assert.strictEqual((conversationService.handleMessage as any).mock.calls.length, 0);
+    assert.strictEqual((conversationService as any).handleMessageInTransaction.mock.calls.length, 0);
   });
 
   test('processes unsupported media through existing unsupported handling', async () => {
@@ -186,19 +249,36 @@ describe('Evolution webhook', () => {
     }));
     assert.strictEqual(response.statusCode, 200);
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await waitFor(async () => Boolean(await prisma.processedWhatsappMessage.findUnique({
+      where: { messageId: 'evolution-image-1' }
+    })));
+    await waitFor(async () => Boolean(await prisma.whatsappOutboundMessage.findUnique({
+      where: { inboundMessageId: 'evolution-image-1' }
+    })));
+    await waitFor(async () => (whatsappClient.sendTextMessage as any).mock.calls.length > 0);
+    await waitFor(async () => {
+      const outbound = await prisma.whatsappOutboundMessage.findUnique({
+        where: { inboundMessageId: 'evolution-image-1' }
+      });
+      return outbound?.status === 'sent';
+    });
     const dedup = await prisma.processedWhatsappMessage.findUnique({
       where: { messageId: 'evolution-image-1' }
     });
     assert.ok(dedup);
-    assert.strictEqual((conversationService.handleMessage as any).mock.calls.length, 0);
+    const outbound = await prisma.whatsappOutboundMessage.findUnique({
+      where: { inboundMessageId: 'evolution-image-1' }
+    });
+    assert.strictEqual(outbound?.status, 'sent');
+    assert.strictEqual((conversationService as any).handleMessageInTransaction.mock.calls.length, 0);
   });
 
   test('sends Evolution text without an empty mentions array', async () => {
     mock.method(global, 'fetch', async () => ({ ok: true, status: 200 }));
     const provider = new EvolutionWhatsAppProvider();
 
-    await provider.sendTextMessage('+15551112222', 'hello');
+    const result = await provider.sendTextMessage('+15551112222', 'hello');
+    assert.deepStrictEqual(result, { outcome: 'accepted' });
 
     const [url, options] = (global.fetch as any).mock.calls[0].arguments;
     assert.strictEqual(url, 'https://evolution.example.com/message/sendText/test-instance');
@@ -221,10 +301,39 @@ describe('Evolution webhook', () => {
     mock.method(global, 'fetch', async () => ({ ok: false, status: 500 }));
     const provider = new EvolutionWhatsAppProvider();
 
-    await assert.doesNotReject(() => provider.sendTextMessage('15551112222@s.whatsapp.net', 'hello'));
+    const result = await provider.sendTextMessage('15551112222@s.whatsapp.net', 'hello');
+    assert.deepStrictEqual(result, {
+      outcome: 'failed',
+      retryable: true,
+      error: 'Evolution API returned 500'
+    });
     const calls = (console.error as any).mock.calls;
     assert.ok(calls.some((call: any) => call.arguments[0] === 'EvolutionWhatsAppProvider: API error, status: 500'));
     assert.strictEqual(calls.some((call: any) => String(call.arguments[0]).includes('test-api-key')), false);
+  });
+
+  test('treats Evolution rate limits as retryable', async () => {
+    mock.method(global, 'fetch', async () => ({ ok: false, status: 429 }));
+    const provider = new EvolutionWhatsAppProvider();
+
+    const result = await provider.sendTextMessage('15551112222@s.whatsapp.net', 'hello');
+    assert.deepStrictEqual(result, {
+      outcome: 'failed',
+      retryable: true,
+      error: 'Evolution API returned 429'
+    });
+  });
+
+  test('treats clear Evolution validation failures as non-retryable', async () => {
+    mock.method(global, 'fetch', async () => ({ ok: false, status: 400 }));
+    const provider = new EvolutionWhatsAppProvider();
+
+    const result = await provider.sendTextMessage('15551112222@s.whatsapp.net', 'hello');
+    assert.deepStrictEqual(result, {
+      outcome: 'failed',
+      retryable: false,
+      error: 'Evolution API returned 400'
+    });
   });
 
   test('does not throw on Evolution timeout or network failure', async () => {
@@ -232,12 +341,14 @@ describe('Evolution webhook', () => {
       throw new DOMException('The operation was aborted.', 'AbortError');
     });
     const provider = new EvolutionWhatsAppProvider();
-    await assert.doesNotReject(() => provider.sendTextMessage('15551112222', 'hello'));
+    const timeoutResult = await provider.sendTextMessage('15551112222', 'hello');
+    assert.strictEqual(timeoutResult.outcome, 'unknown');
 
     mock.method(global, 'fetch', async () => {
       throw new Error('connection failed with test-api-key');
     });
-    await assert.doesNotReject(() => provider.sendTextMessage('15551112222', 'hello'));
+    const networkResult = await provider.sendTextMessage('15551112222', 'hello');
+    assert.strictEqual(networkResult.outcome, 'unknown');
 
     const calls = (console.error as any).mock.calls;
     assert.ok(calls.some((call: any) => call.arguments[0] === 'EvolutionWhatsAppProvider: Request timed out'));

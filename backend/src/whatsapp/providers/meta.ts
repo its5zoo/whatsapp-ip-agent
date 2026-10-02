@@ -3,7 +3,7 @@ import { whatsappClient } from '../../services/whatsappClient';
 import { parsePayload } from '../payloadParser';
 import { verifySignature } from '../signatureVerifier';
 import type { WebhookPayload } from '../types';
-import type { NormalizedProviderEvent, WhatsAppProvider } from './types';
+import type { NormalizedProviderEvent, WhatsAppProvider, WhatsAppDeliveryResult } from './types';
 
 export class MetaWhatsAppProvider implements WhatsAppProvider {
   readonly name = 'meta' as const;
@@ -24,7 +24,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     return parsePayload(payload as WebhookPayload);
   }
 
-  sendTextMessage(toWaId: string, text: string): Promise<void> {
+  sendTextMessage(toWaId: string, text: string): Promise<WhatsAppDeliveryResult> {
     return whatsappClient.sendTextMessage(toWaId, text);
   }
 }

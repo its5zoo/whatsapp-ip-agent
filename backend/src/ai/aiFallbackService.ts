@@ -2,6 +2,30 @@ import { AIInterpretation } from './types';
 import { aiProvider } from './aiProvider';
 import { QuestionOption } from '../engine/types';
 
+const CREDENTIAL_VALUE_PATTERN =
+  /\b(?:password|passwd|api[-_ ]?key|secret|token)\b\s*(?:is|=|:|->)\s*\S+/i;
+const AUTHORIZATION_PATTERN = /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/i;
+const JWT_PATTERN = /\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/;
+const PEM_PATTERN = /-----BEGIN (?:[A-Z0-9 ]+ )?(?:PRIVATE KEY|RSA PRIVATE KEY|EC PRIVATE KEY)-----/i;
+const PAYMENT_PATTERN =
+  /\b(?:card|credit card|debit card|bank account|account number|routing number)\b[^\n]{0,32}\b\d(?:[\s-]*\d){5,18}\b/i;
+const PROMPT_INJECTION_PATTERN =
+  /\b(?:ignore|disregard|override|bypass|forget)\b[^\n]{0,40}\b(?:previous|prior|system|questionnaire|instructions?|prompt)\b|\b(?:reveal|show|print)\b[^\n]{0,32}\b(?:system prompt|instructions?)\b/i;
+const CODE_PATTERN =
+  /```|<\/?[a-z][^>]*>|^\s*[{[]|^\s*(?:const|let|var|function|class|import|export|select|insert|update|delete)\b|\b(?:const|let|var|function|class)\s+\w+\s*=|^\s*[\w.-]+\s*=\s*\S+/im;
+
+function isUnsafeFallbackInput(input: string): boolean {
+  return input.includes('\n') ||
+    input.includes('\r') ||
+    CREDENTIAL_VALUE_PATTERN.test(input) ||
+    AUTHORIZATION_PATTERN.test(input) ||
+    JWT_PATTERN.test(input) ||
+    PEM_PATTERN.test(input) ||
+    PAYMENT_PATTERN.test(input) ||
+    PROMPT_INJECTION_PATTERN.test(input) ||
+    CODE_PATTERN.test(input);
+}
+
 export class AIFallbackService {
   async interpretChoice(
     userMessage: string,
@@ -13,6 +37,9 @@ export class AIFallbackService {
     }
 
     const truncatedMessage = userMessage.slice(0, 500);
+    if (isUnsafeFallbackInput(truncatedMessage)) {
+      return null;
+    }
 
     const systemInstruction = `You are an AI assistant helping a user answer a questionnaire.
 Your task is ONLY to map the user's natural language input to one of the provided numbered options for the CURRENT question.

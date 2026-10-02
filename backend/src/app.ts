@@ -9,6 +9,8 @@ import rateLimit from '@fastify/rate-limit';
 import adminRoutes from './routes/admin';
 import { whatsappRoutes } from './routes/whatsapp';
 import { isWhatsappConfigured } from './config/env';
+import { createWhatsAppProvider } from './whatsapp/providers';
+import { whatsappDeliveryService } from './services/whatsappDeliveryService';
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({
@@ -31,12 +33,16 @@ export function buildApp(): FastifyInstance {
 
   if (isWhatsappConfigured()) {
     app.register(whatsappRoutes);
+    app.addHook('onReady', async () => {
+      whatsappDeliveryService.start(createWhatsAppProvider());
+    });
     app.log.info('WhatsApp integration enabled');
   } else {
     app.log.warn('WhatsApp integration disabled: missing env vars');
   }
 
   app.addHook('onClose', async () => {
+    await whatsappDeliveryService.stop();
     await prisma.$disconnect();
   });
 

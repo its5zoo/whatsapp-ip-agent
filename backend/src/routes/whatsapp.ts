@@ -4,6 +4,9 @@ import { WebhookPayload } from '../whatsapp/types';
 import { createWhatsAppProvider } from '../whatsapp/providers';
 import { conversationService } from '../services/conversationService';
 import prisma from '../db/prisma';
+import { whatsappDeliveryService } from '../services/whatsappDeliveryService';
+
+const WHATSAPP_WEBHOOK_BODY_LIMIT = 1024 * 1024;
 
 export const whatsappRoutes: FastifyPluginAsync = async (server) => {
   const metaProvider = createWhatsAppProvider('meta');
@@ -37,7 +40,9 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
     return reply.status(403).send();
     });
 
-    server.post('/webhook/whatsapp', async (request, reply) => {
+    server.post('/webhook/whatsapp', {
+      bodyLimit: WHATSAPP_WEBHOOK_BODY_LIMIT
+    }, async (request, reply) => {
     const rawBody = request.body as Buffer;
     const signature = request.headers['x-hub-signature-256'] as string;
 
@@ -72,7 +77,9 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
   }
 
   if (isWhatsappProviderConfigured('evolution')) {
-    server.post('/webhook/evolution', async (request, reply) => {
+    server.post('/webhook/evolution', {
+      bodyLimit: WHATSAPP_WEBHOOK_BODY_LIMIT
+    }, async (request, reply) => {
       const secret = request.headers['x-evolution-webhook-secret'] as string | undefined;
       if (!evolutionProvider.verifyWebhookSecret(secret)) {
         server.log.warn('Invalid or missing Evolution webhook authentication');
@@ -121,47 +128,46 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
   }
 
   async function handleIncomingMessage(waId: string, messageId: string, text: string) {
-    try {
-      // Attempt idempotency deduplication
-      await prisma.processedWhatsappMessage.create({
-        data: {
-          messageId,
-          waId
-        }
-      });
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        // Duplicate messageId, skip silently
-        return;
-      }
-      // Re-throw other errors (e.g. DB connection issues) so they can be logged
-      throw error;
-    }
-
     // Hand over to the ConversationService
-    const responseText = await conversationService.handleMessage('whatsapp', waId, text);
-    if (responseText) {
-      await outboundProvider.sendTextMessage(waId, responseText);
-    }
+    await conversationService.handleMessage(
+      'whatsapp',
+      waId,
+      text,
+      new Date(),
+      messageId
+    );
+    await whatsappDeliveryService.deliverByInboundMessageId(messageId, outboundProvider);
   }
 
   async function handleUnsupportedMessage(waId: string, messageId: string) {
+    let isDuplicate = false;
     try {
-      // Attempt idempotency deduplication
-      await prisma.processedWhatsappMessage.create({
-        data: {
-          messageId,
-          waId
-        }
+      await prisma.$transaction(async (tx) => {
+        await tx.processedWhatsappMessage.create({
+          data: { messageId, waId }
+        });
+        await tx.whatsappOutboundMessage.create({
+          data: {
+            inboundMessageId: messageId,
+            waId,
+            text: env.WHATSAPP_REPLY_UNSUPPORTED,
+            status: 'pending'
+          }
+        });
       });
     } catch (error: any) {
       if (error.code === 'P2002') {
-        return;
+        isDuplicate = true;
+      } else {
+        throw error;
       }
-      throw error;
     }
 
-    // Send the polite unsupported text reply
-    await outboundProvider.sendTextMessage(waId, env.WHATSAPP_REPLY_UNSUPPORTED);
+    if (isDuplicate) {
+      await whatsappDeliveryService.deliverByInboundMessageId(messageId, outboundProvider);
+      return;
+    }
+
+    await whatsappDeliveryService.deliverByInboundMessageId(messageId, outboundProvider);
   }
 };

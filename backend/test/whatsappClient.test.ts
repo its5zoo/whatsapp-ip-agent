@@ -34,7 +34,8 @@ describe('WhatsappClient', () => {
   });
 
   test('should send a text message with correct url, headers, and body', async () => {
-    await client.sendTextMessage('123456', 'hello world');
+    const result = await client.sendTextMessage('123456', 'hello world');
+    assert.deepStrictEqual(result, { outcome: 'accepted' });
 
     const fetchCalls = (global.fetch as any).mock.calls;
     assert.strictEqual(fetchCalls.length, 1);
@@ -60,7 +61,8 @@ describe('WhatsappClient', () => {
       throw new DOMException('The operation was aborted.', 'AbortError');
     });
 
-    await assert.doesNotReject(() => client.sendTextMessage('123456', 'hello'));
+    const result = await client.sendTextMessage('123456', 'hello');
+    assert.strictEqual(result.outcome, 'unknown');
     const calls = (console.error as any).mock.calls;
     assert.ok(calls.some((c: any) => c.arguments[0] === 'WhatsappClient: Request to Meta Graph API timed out'));
   });
@@ -71,11 +73,30 @@ describe('WhatsappClient', () => {
       status: 400,
     }));
 
-    await assert.doesNotReject(() => client.sendTextMessage('123456', 'hello'));
+    const result = await client.sendTextMessage('123456', 'hello');
+    assert.deepStrictEqual(result, {
+      outcome: 'failed',
+      retryable: false,
+      error: 'Meta API returned 400'
+    });
     const calls = (console.error as any).mock.calls;
     assert.ok(calls.some((c: any) => c.arguments[0] === 'WhatsappClient: Meta Graph API error, status: 400'));
     // Ensure token is not logged
     assert.strictEqual(calls.some((c: any) => String(c.arguments[0]).includes('test-token')), false);
+  });
+
+  test('should retry HTTP 429 responses', async () => {
+    mock.method(global, 'fetch', async () => ({
+      ok: false,
+      status: 429,
+    }));
+
+    const result = await client.sendTextMessage('123456', 'hello');
+    assert.deepStrictEqual(result, {
+      outcome: 'failed',
+      retryable: true,
+      error: 'Meta API returned 429'
+    });
   });
 
   test('should not throw on HTTP 500', async () => {
@@ -84,7 +105,12 @@ describe('WhatsappClient', () => {
       status: 500,
     }));
 
-    await assert.doesNotReject(() => client.sendTextMessage('123456', 'hello'));
+    const result = await client.sendTextMessage('123456', 'hello');
+    assert.deepStrictEqual(result, {
+      outcome: 'failed',
+      retryable: true,
+      error: 'Meta API returned 500'
+    });
     const calls = (console.error as any).mock.calls;
     assert.ok(calls.some((c: any) => c.arguments[0] === 'WhatsappClient: Meta Graph API error, status: 500'));
   });
@@ -94,7 +120,8 @@ describe('WhatsappClient', () => {
       throw new Error('Generic connection error');
     });
 
-    await assert.doesNotReject(() => client.sendTextMessage('123456', 'hello'));
+    const result = await client.sendTextMessage('123456', 'hello');
+    assert.strictEqual(result.outcome, 'unknown');
     const calls = (console.error as any).mock.calls;
     assert.strictEqual(calls.some((c: any) => String(c.arguments[0]).includes('test-token')), false);
   });

@@ -1,10 +1,16 @@
 import prisma from '../prisma';
-import { Conversation } from '@prisma/client';
+import { Conversation, Prisma, PrismaClient } from '@prisma/client';
 import { ConversationData } from '../../engine/types';
 
+type DatabaseClient = PrismaClient | Prisma.TransactionClient;
+
 export class ConversationRepository {
-  async findByChannelAndUser(channel: string, externalUserId: string): Promise<Conversation | null> {
-    return prisma.conversation.findUnique({
+  async findByChannelAndUser(
+    channel: string,
+    externalUserId: string,
+    db: DatabaseClient = prisma
+  ): Promise<Conversation | null> {
+    return db.conversation.findUnique({
       where: {
         channel_externalUserId: {
           channel,
@@ -14,8 +20,12 @@ export class ConversationRepository {
     });
   }
 
-  async create(channel: string, externalUserId: string): Promise<Conversation> {
-    return prisma.conversation.create({
+  async create(
+    channel: string,
+    externalUserId: string,
+    db: DatabaseClient = prisma
+  ): Promise<Conversation> {
+    return db.conversation.create({
       data: {
         channel,
         externalUserId,
@@ -26,8 +36,14 @@ export class ConversationRepository {
     });
   }
 
-  async updateState(id: string, currentQuestionId: string | null, data: ConversationData, isCompleted: boolean): Promise<Conversation> {
-    return prisma.conversation.update({
+  async updateState(
+    id: string,
+    currentQuestionId: string | null,
+    data: ConversationData,
+    isCompleted: boolean,
+    db: DatabaseClient = prisma
+  ): Promise<Conversation> {
+    return db.conversation.update({
       where: { id },
       data: {
         currentQuestionId,

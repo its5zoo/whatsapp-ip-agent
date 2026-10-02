@@ -1,10 +1,7 @@
 import { env } from '../../config/env';
-import type { NormalizedProviderEvent, WhatsAppProvider } from './types';
+import type { NormalizedProviderEvent, WhatsAppProvider, WhatsAppDeliveryResult } from './types';
 
-/**
- * Evolution inbound adapter. Outbound transport remains intentionally
- * unimplemented until the Evolution client is added.
- */
+/** Evolution inbound and outbound WhatsApp adapter. */
 export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   readonly name = 'evolution' as const;
 
@@ -69,9 +66,9 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }];
   }
 
-  async sendTextMessage(toWaId: string, text: string): Promise<void> {
+  async sendTextMessage(toWaId: string, text: string): Promise<WhatsAppDeliveryResult> {
     if (!env.EVOLUTION_API_URL || !env.EVOLUTION_API_KEY || !env.EVOLUTION_INSTANCE) {
-      return;
+      return { outcome: 'failed', retryable: false, error: 'Evolution provider is not configured' };
     }
 
     const url = `${env.EVOLUTION_API_URL.replace(/\/+$/, '')}/message/sendText/${encodeURIComponent(env.EVOLUTION_INSTANCE)}`;
@@ -97,12 +94,20 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
 
       if (!response.ok) {
         console.error(`EvolutionWhatsAppProvider: API error, status: ${response.status}`);
+        return {
+          outcome: 'failed',
+          retryable: response.status === 429 || response.status >= 500,
+          error: `Evolution API returned ${response.status}`
+        };
       }
+      return { outcome: 'accepted' };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.error('EvolutionWhatsAppProvider: Request timed out');
+        return { outcome: 'unknown', error: 'Evolution request timed out' };
       } else {
         console.error('EvolutionWhatsAppProvider: Error sending message');
+        return { outcome: 'unknown', error: 'Evolution request failed' };
       }
     } finally {
       clearTimeout(timeoutId);
