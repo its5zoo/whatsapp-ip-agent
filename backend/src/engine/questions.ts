@@ -172,9 +172,8 @@ export const QUESTIONNAIRE: Record<string, QuestionDefinition> = {
   // SHARED FINAL DETAILS
   shared_name: { id: 'shared_name', text: 'Thank you! We have a better understanding of your requirement.\n\nTo help us assess your enquiry, please share:\n\n1. Your Name:', type: 'text', nextState: 'shared_org' },
   shared_org: { id: 'shared_org', text: '2. Organization/Company Name:', type: 'text', nextState: 'shared_email' },
-  shared_email: { id: 'shared_email', text: '3. Email ID:', type: 'text', nextState: 'shared_mobile' },
-  shared_mobile: { id: 'shared_mobile', text: '4. Mobile Number:', type: 'text', nextState: 'shared_city' },
-  shared_city: { id: 'shared_city', text: '5. City/Country:', type: 'text', nextState: 'shared_comm' },
+  shared_email: { id: 'shared_email', text: '3. Email ID:', type: 'text', nextState: 'shared_city' },
+  shared_city: { id: 'shared_city', text: '4. City/Country:', type: 'text', nextState: 'shared_comm' },
   shared_comm: {
     id: 'shared_comm',
     text: "Preferred mode of communication:\n\n1. WhatsApp\n2. Phone Call (preferred date and time)\n3. Email\n4. Online Consultation (Share link https://calendar.app.google/jXkhimLKpYRjGpA38)",

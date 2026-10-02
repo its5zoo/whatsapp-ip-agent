@@ -1,7 +1,7 @@
 # WhatsApp IP Agent — Project Handoff
 
 **Document purpose:** Living, durable context for any agent taking over this repository.
-**Last updated:** 2026-10-02 14:55 (+05:30)
+**Last updated:** 2026-10-02 20:18 (+05:30)
 **Repository:** `0xyusufz/whatsapp-ip-agent`
 **Current branch:** `main`
 **Current HEAD:** `cc63ea8dfb498227024d18b126efe22d69c48bbb`
@@ -40,7 +40,7 @@ If a future agent changes a file, it must update this document before finishing.
 
 The project is a deterministic WhatsApp IP enquiry agent for GenioBrain IP Solution. The questionnaire engine, PostgreSQL persistence, Meta integration, Evolution integration, admin dashboard, n8n notification path, Docker/Caddy deployment, outbound outbox, retry logic, and production-hardening foundations are already implemented.
 
-The completed-conversation contract and Evolution webhook test synchronization work are implemented and validated. The current working tree contains the five intentional tracked source/test changes plus this handoff document as an untracked file. The changes remain intentionally uncommitted pending final authorization. No commit or push has been made.
+The completed-conversation contract, Evolution webhook test synchronization work, WhatsApp sender-mobile change, frontend CRM UX pass, local HTTPS/API development setup, Phase 2 persisted Lead status capability, and Phase 3 persistent CRM Follow-ups are implemented and locally verified. All changes remain intentionally uncommitted pending final authorization. No commit or push has been made.
 
 The most important current product rule is:
 
@@ -51,39 +51,75 @@ The most important current product rule is:
 Current status:
 
 ```text
+ M backend/src/engine/answerDecoder.ts
+ M backend/src/engine/questions.ts
+ M backend/src/prisma/schema.prisma
+ M backend/src/routes/admin.ts
+ M backend/src/services/adminFollowUpService.ts
+ M backend/src/services/adminLeadService.ts
  M backend/src/services/conversationService.ts
- M backend/test/continuity.test.ts
+ M backend/test/admin.test.ts
+ M backend/test/answerDecoder.test.ts
  M backend/test/db.test.ts
- M backend/test/evolution.test.ts
+ M backend/test/n8n.test.ts
  M backend/test/simulator.test.ts
+ M frontend/.gitignore
+ M frontend/package.json
+ M frontend/src/app/dashboard/conversations/[id]/page.tsx
+ M frontend/src/app/dashboard/conversations/page.tsx
+ M frontend/src/app/dashboard/layout.tsx
+ M frontend/src/app/dashboard/leads/[id]/page.tsx
+ M frontend/src/app/dashboard/follow-ups/page.tsx
+ M frontend/src/app/dashboard/page.tsx
+ M frontend/src/app/globals.css
+ M frontend/src/app/login/page.tsx
+ M frontend/src/lib/api.ts
+ M frontend/src/lib/formatters.ts
+ M frontend/src/types/index.ts
+?? backend/src/prisma/migrations/20261002202000_add_lead_status/
+?? backend/src/prisma/migrations/20261002203600_add_follow_ups/
+?? frontend/src/app/api/
+?? frontend/src/app/dashboard/follow-ups/
+?? frontend/src/app/dashboard/leads/page.tsx
+?? frontend/src/app/dashboard/settings/
 ```
 
 There are:
 
 - no staged changes;
-- one untracked file: `PROJECT_HANDOFF.md`;
+- one untracked migration directory and four untracked frontend route directories/filesets;
 - no local commits ahead of `origin/main`;
-- no known unrelated working-tree files.
+- `PROJECT_HANDOFF.md` is tracked and modified.
 
-Current diff summary:
-
-```text
-5 files changed
-131 insertions
-38 deletions
-```
+Current diff includes the existing backend changes, the frontend CRM changes, and this modified handoff document; use `git diff --stat` during final review for exact insertion/deletion counts.
 
 The current uncommitted files are:
 
 | File | Role | Scope |
 |---|---|---|
-| `backend/src/services/conversationService.ts` | Production conversation orchestration | Final completed-conversation behavior |
+| `backend/src/engine/answerDecoder.ts` | Dashboard answer decoding | Preserve the persisted mobile label |
+| `backend/src/engine/questions.ts` | Questionnaire graph | Skip the user-facing mobile question |
+| `backend/src/services/conversationService.ts` | Production conversation orchestration | Completed behavior and WhatsApp sender mobile population |
+| `backend/src/prisma/schema.prisma` | Prisma data model | Persisted `LeadStatus` enum with `NEW` default |
+| `backend/src/prisma/migrations/20261002202000_add_lead_status/migration.sql` | New migration | Adds the Lead status enum and non-null `NEW` column |
+| `backend/src/prisma/migrations/20261002203600_add_follow_ups/migration.sql` | New migration | Adds persistent FollowUps and status enum |
+| `backend/src/routes/admin.ts` | Protected admin API | Validated `PATCH /admin/leads/:id/status` |
+| `backend/src/services/adminFollowUpService.ts` | Admin Follow-up data access | Protected Follow-up listing, creation, rescheduling, completion, and cancellation |
+| `backend/src/services/adminLeadService.ts` | Admin Lead data access | Reads and updates persisted Lead status |
+| `backend/test/admin.test.ts` | Admin API regression tests | Status authentication, transitions, validation, and not-found coverage |
+| `backend/test/answerDecoder.test.ts` | Decoder regression test | Updated shared-field labels |
 | `backend/test/continuity.test.ts` | Focused continuity tests | Completed-state contract |
-| `backend/test/db.test.ts` | Database integration test | Updated persistence contract |
+| `backend/test/db.test.ts` | Database integration test | Persistence contract and WhatsApp sender mobile coverage |
 | `backend/test/evolution.test.ts` | Evolution webhook tests | Event-specific async synchronization |
-| `backend/test/simulator.test.ts` | Simulator integration test | Updated completed restart flow |
+| `backend/test/n8n.test.ts` | n8n integration test | Updated questionnaire completion sequence |
+| `backend/test/simulator.test.ts` | Simulator integration test | Updated questionnaire completion sequence |
+| `frontend/src/app/dashboard/follow-ups/page.tsx` | CRM Follow-ups workspace | Real loading/error/empty states and Follow-up actions |
+| `frontend/src/app/dashboard/leads/[id]/page.tsx` | Lead detail workspace | Compact persisted Follow-up section |
+| `frontend/src/types/index.ts` | Frontend API types | FollowUp and status types |
 
 Do not discard these changes without reviewing them. Do not modify unrelated user work.
+
+The local development database, local test database, and local Docker application database have all received the tracked migrations through `20261002202000_add_lead_status`. No production or AWS database was touched.
 
 ## 3. Recent committed history
 
@@ -660,10 +696,12 @@ Latest known focused results:
 | Backend build | Passed |
 | Prisma validation | Passed |
 | `git diff --check` | Passed |
+| Focused answer-decoder, DB, n8n, and simulator tests after mobile change | Passed |
 | Unsupported-media Evolution test in isolation | Passed |
 | Meta-provider Evolution test in isolation | Passed |
 | Full Evolution suite | 13/13 passed in 13 repeated sequential runs after event-specific synchronization |
-| Full backend `npm test` | Passed; all test files completed successfully |
+| Latest full backend `npm test` after mobile change | Passed; all backend test files completed successfully |
+| Evolution suite rerun independently after that failure | 13/13 passed |
 | WhatsApp outbound delivery suite | 10/10 passed, including explicit retryable failure test |
 | Backend build after delivery investigation | Passed |
 
@@ -671,7 +709,18 @@ The latest full `npm test` result after all current changes passed.
 
 ## 15. Current test blocker
 
-There is no active Evolution test blocker. The previously reported Evolution webhook synchronization issue has been resolved and validated.
+There is no active test blocker. The final full backend `npm test` passed all test files, the focused admin suite passed, the independent Evolution suite passed 13/13, the backend build passed, Prisma validation passed, and the frontend lint/build passed. The frontend lint warning in `frontend/src/lib/api.ts` remains pre-existing and non-failing.
+
+Phase 2 local Docker verification passed:
+
+- 12 existing Docker Leads were preserved and had status `NEW` after migration;
+- authenticated Lead list/detail requests returned `200`;
+- an existing Lead changed `NEW → CONTACTED`, persisted after reload, then changed `CONTACTED → QUALIFIED` and persisted after reload;
+- customer data and questionnaire answers remained unchanged;
+- the linked conversation remained completed with `current_question_id` null;
+- the incomplete-conversation endpoint continued returning `200` with 16 existing incomplete conversations.
+
+The local test database was reset only through the existing test reset utility before running isolated/full tests. No application production data was deleted.
 
 Historical context: the previously requested test was:
 
@@ -706,24 +755,14 @@ The broader lifecycle design rationale remains documented because webhook proces
 - the correct synchronization must be tied to each test’s own inbound message ID, outbound row, and provider call;
 - each test must synchronize on its own inbound message ID, outbound row, and provider call.
 
-Required approach:
-
-- inspect the exact failing test;
-- compare isolated and full-suite execution;
-- identify the specific outbound row for `evolution-meta-outbound-1`;
-- wait on durable event-specific state or the matching provider call;
-- do not delete the wait;
-- do not use arbitrary sleeps;
-- do not increase the timeout merely to hide the issue;
-- do not modify production Evolution/provider code.
+The remaining next step is final diff review and explicit commit authorization only.
 
 ## 16. Immediate next work
 
-1. Complete any remaining final validation or diff review.
-2. Confirm the five intended tracked source/test files and `PROJECT_HANDOFF.md` are the only project changes.
-3. Confirm no secrets, scratch files, PDFs, schema/migration files, provider source, Docker files, n8n files, or unrelated AI tests were changed.
-4. Do not commit or push without separate authorization.
-6. Run the complete backend test runner sequentially:
+1. Review the complete diff and confirm the Phase 2 files are limited to the schema, new migration, admin service/route, focused tests, frontend status integration, and handoff update in addition to prior intentional work.
+2. Confirm no secrets, scratch files, PDFs, provider changes, AI changes, questionnaire changes, n8n changes, Docker/Caddy changes, or production deployment changes were introduced by Phase 2.
+3. Do not commit or push without separate authorization.
+4. No further validation is currently required; the final verified commands were:
 
 ```bash
 cd backend
@@ -734,10 +773,8 @@ cd ..
 git diff --check
 ```
 
-7. Review the complete diff.
-8. Confirm only the five intended files are modified.
-9. Confirm no secrets, scratch files, PDFs, schema/migration files, provider source, Docker files, n8n files, or unrelated AI tests were changed.
-10. Stop and report results. Do not commit or push unless separately authorized.
+5. Review the complete diff.
+6. Stop and report results. Do not commit or push unless separately authorized.
 
 ## 17. Phase history and current phase status
 
@@ -753,6 +790,12 @@ git diff --check
 | 8 | Meta/Evolution/continuity/security foundations | Implemented in repository |
 | 9 | WhatsApp inbound/outbound integration and reliability | Implemented and validated; final repository authorization/state remains |
 | 10 | VPS, backups, restore, monitoring, handover | Repository foundation only; operational work pending |
+
+CRM capability status:
+
+- Phase 2 Lead Status: implemented, migrated, tested, and locally Docker-verified.
+- Phase 3 Follow-ups: implemented, migrated to local Docker/test databases, focused-tested, and locally Docker-verified.
+- Lead Status and Follow-up Status remain independent.
 
 ## 18. Phase 10 operational status
 
@@ -925,9 +968,140 @@ There is no active Evolution test blocker. The next agent should perform any rem
 - No production/provider source was changed during the Evolution investigation.
 - No commit or push was performed.
 
+### 2026-10-02 15:45 (+05:30)
+
+- Completed the WhatsApp questionnaire mobile-number change.
+- Removed the active `shared_mobile` question so the flow proceeds directly from Email to City/Country.
+- Populated the existing `shared_mobile`/Lead `mobile` value from the WhatsApp sender identity, including Evolution JID normalization.
+- Preserved persisted mobile decoding for dashboard output.
+- Updated focused DB, simulator, n8n, and answer-decoder tests; all passed.
+- Backend build, Prisma validation, and `git diff --check` passed.
+- The full backend suite had one intermittent Evolution near-1 MiB synchronization timeout; an independent Evolution rerun passed 13/13. No Evolution or provider source was changed for the mobile task.
+- A final full backend `npm test` rerun passed with all test files green.
+- No commit or push was performed.
+
+### 2026-10-02 16:17 (+05:30)
+
+- Added the first frontend/product UX pass for the Lead Management CRM.
+- Reworked the authenticated shell with Overview, Leads, Incomplete Conversations, Follow-ups, and Settings navigation.
+- Added an operational Overview using real `/admin/stats`, `/admin/leads`, and `/admin/conversations` responses.
+- Added a dedicated Leads workspace with real search, service filtering, pagination, loading, empty, and error states.
+- Improved lead and incomplete-conversation detail pages with human-readable sections and responsive layouts.
+- Added transparent unavailable-state pages for Follow-ups and Settings because the current backend does not expose persistence or APIs for those features.
+- Added restrained responsive CRM styling, accessible labels, focus states, and skeleton/error states.
+- No backend, WhatsApp, questionnaire, AI, schema, migration, provider, Docker, or n8n files were changed for this frontend pass.
+- Frontend build passed; lint has one pre-existing warning in `frontend/src/lib/api.ts` and no errors.
+- No commit or push was performed.
+
+### 2026-10-02 16:49 (+05:30)
+
+- Fixed local frontend API routing by setting `frontend/.env.local` to `/api` and making `frontend/src/lib/api.ts` default to `/api` with normalized endpoint joining.
+- Preserved production behavior because the production Compose build already supplies `NEXT_PUBLIC_API_URL=/api`.
+- Updated the Overview to distinguish successful empty responses from failed API requests; failed loads now retain explicit error/unavailable states instead of rendering zero-data empty states.
+- No backend, Caddy, provider, questionnaire, AI, Prisma, n8n, or Docker files were changed.
+
+### 2026-10-02 16:51 (+05:30)
+
+- Verified that `frontend/next.config.ts` originally had no `/api/*` rewrite; direct local requests returned Next.js 404 responses.
+- Added a development-only Next.js `/api/*` route handler that forwards to Caddy at `https://localhost/api/*`, preserving request cookies and login `Set-Cookie` headers.
+- The local proxy uses a development-only TLS relaxation for Caddy's local certificate; it returns 404 when `NODE_ENV` is not `development`.
+- Production behavior remains unchanged: the rewrite is disabled when `NODE_ENV` is not `development`, and production Compose still supplies `/api`.
+- Endpoint probes reached Caddy/backend and returned real `401 Unauthorized` responses without an admin cookie rather than 404; authenticated browser requests use the existing cookie flow.
+
+### 2026-10-02 18:03 (+05:30)
+
+- Investigated the authenticated local CRM `401` behavior.
+- The Docker backend runs with `NODE_ENV=production`, so `/admin/login` sets `auth_token` with `Secure; HttpOnly; SameSite=Lax; Path=/`.
+- When the frontend is served over `http://localhost:3000`, the browser cannot store/send that Secure cookie, even though the Next rewrite correctly reaches Caddy/backend.
+- Changed only the local `frontend` dev script to serve HTTPS using the existing local Caddy `localhost` certificate and key. The local CA remains trusted by the Next proxy through `NODE_EXTRA_CA_CERTS`.
+- Added local certificate artifacts to `frontend/.gitignore`.
+- Production backend cookie security, Docker configuration, Caddy configuration, and authentication behavior remain unchanged.
+- Local login verification succeeded with the configured admin account: the response set `auth_token` with `Secure; HttpOnly; SameSite=Lax; Path=/`, and authenticated requests returned real Docker data.
+
+### 2026-10-02 19:57 (+05:30)
+
+- Reviewed the local HTTPS development artifacts before commit.
+- Added explicit ignore rules for `frontend/caddy-localhost.crt` and `frontend/caddy-localhost.key`; the local CA bundle remains ignored by the existing `caddy-local-*.crt` rule.
+- Confirmed the local HTTPS Next.js server and development `/api/*` proxy remain active without application behavior changes.
+- Authenticated local requests returned `200` for stats, leads, and incomplete conversations.
+- No commit or push was performed.
+
+### 2026-10-02 20:07 (+05:30)
+
+- Refined the frontend CRM presentation without changing application behavior or API contracts.
+- Added display-only WhatsApp identity formatting: Indian individual numbers render as `+91 70047 57990`, group JIDs render as `WhatsApp group`, and simulator/test identities remain recognizable.
+- Applied the formatter to incomplete-conversation list/detail views and Indian phone formatting to lead detail.
+- Improved incomplete-conversation detail hierarchy and collected-answer visibility while keeping unsupported service/activity actions absent.
+- No backend, provider, authentication, questionnaire, AI, persistence, Docker, Caddy, Prisma, or n8n behavior changed.
+- Validation: frontend build passed; frontend lint passed with the existing `frontend/src/lib/api.ts` internal-navigation warning; `git diff --check` passed.
+
+### 2026-10-02 20:18 (+05:30)
+
+- Started Phase 2 CRM backend foundation for persisted Lead status.
+- Added the `LeadStatus` Prisma enum and `NEW` default to `Lead`; created `20261002202000_add_lead_status/migration.sql` without modifying existing migrations.
+- Added protected, strict `PATCH /admin/leads/:id/status` support with authentication, allowlist validation, unknown-lead handling, and status in both existing Lead GET responses.
+- Preserved manager-selected status during questionnaire/Lead upserts because the Lead repository update payload does not include status.
+- Connected the Lead list and detail UI to the persisted status; detail updates use the protected endpoint and show explicit failure state.
+- Added focused admin and database assertions for defaults, transitions, validation, authentication, persistence, and status preservation.
+- Prisma generation, schema validation, backend build, frontend lint/build, and `git diff --check` passed. At that point backend tests were awaiting the authorized local migration; no database-mutating command had yet been run.
+
+### 2026-10-02 20:23 (+05:30)
+
+- Applied the tracked migrations to the local development database, local test database, and local Docker application database using `prisma migrate deploy` / the existing Compose `backend-migrate` service. No production or AWS database was touched.
+- Rebuilt and restarted only the local Docker backend so the running CRM used the Phase 2 implementation.
+- Confirmed 12 existing Docker Leads were preserved and defaulted to `NEW`; no application data was intentionally deleted.
+- Authenticated local CRM verification passed: Lead list/detail and incomplete-conversation APIs returned `200`; an existing Lead persisted `NEW → CONTACTED → QUALIFIED` across reloads.
+- Confirmed the linked completed conversation remained completed with unchanged customer/questionnaire data and that 16 incomplete conversations remained available.
+- Focused admin tests passed, the final full backend suite passed, the Evolution suite passed 13/13 independently, backend build passed, Prisma validation/migration status passed, frontend lint/build passed, and `git diff --check` passed.
+- One earlier full-suite run reproduced the known intermittent Evolution synchronization timeout; the final full-suite rerun passed with zero failures. No Evolution/provider production code was changed.
+
+### 2026-10-02 20:36 (+05:30)
+
+- Implemented Phase 3 persistent CRM Follow-ups.
+- Added `FollowUpStatus` (`PENDING`, `COMPLETED`, `CANCELLED`), the `FollowUp` model and Lead relation, indexes for Lead/status/scheduled time, and migration `20261002203600_add_follow_ups`.
+- Added protected admin APIs for listing/filtering, creating, rescheduling, completing, and cancelling Follow-ups with Lead/date/body validation.
+- Replaced the frontend Follow-ups unavailable placeholder with real Today, Upcoming, Overdue, and Completed groups, creation, rescheduling, completion, cancellation, loading, empty, and error states.
+- Added persisted Follow-ups to Lead detail while keeping activity history explicitly unavailable.
+- Focused admin tests passed 15/15. The final full backend suite passed all files; earlier attempts showed the existing intermittent Evolution synchronization timeout, with no Evolution/provider changes made.
+- Local Docker CRUD verification passed: create `201`, list `200`, reschedule `200`, complete `200`, persisted read `200`. Existing Docker data remained intact.
+- Frontend lint/build, backend build, Prisma validation, and `git diff --check` passed. No commit, push, deploy, or production/AWS database change was performed.
+
 ### 2026-10-02 14:32 (+05:30)
 
 - Declared `PROJECT_HANDOFF.md` the canonical living project record.
 - Required every future code, test, configuration, infrastructure, migration, deployment, validation, risk, decision, commit, and push change to be recorded here.
 - Added the rule that unverified facts must be marked **UNKNOWN**.
 - No source code, tests, configuration, database, commit, or push was changed in this update.
+
+### 2026-10-02 15:25 (+05:30)
+
+- Implemented the Phase 4 CRM-only Notes and Activity History foundation.
+- Added `ActivityType`, `InternalNote`, and `Activity` Prisma models plus Lead relations and migration `20261002204500_add_crm_notes_activity`; prior migrations were not modified.
+- Added protected Notes APIs: list/create by Lead, update, and delete. Added protected per-Lead Activity API. Validation covers authentication, Lead/Note existence, non-empty content, and the 5000-character note limit.
+- Added transactional activity creation for Lead status changes, Follow-up creation/rescheduling/completion/cancellation, and Note add/edit/delete. Repeated unchanged status actions do not create duplicate activities.
+- Added real Lead Detail Notes and Activity sections with loading, error, empty, create/edit/delete, and chronological timeline states. No Notes or Activities are sent to WhatsApp, n8n, or questionnaire flows.
+- Focused admin tests pass 16/16. Backend build and Prisma validation pass. Frontend lint/build pass with the existing `frontend/src/lib/api.ts` warning. `git diff --check` passes.
+- Applied the Phase 4 migration to the authorized local Docker application database and local test database only. Docker data verification remains 12 Leads and 27 Conversations; Notes and Activities were initially empty.
+- Rebuilt/restarted the local Docker backend and authenticated Notes/Activity endpoint smoke tests returned `200`; note creation returned `201`. The temporary local verification note was created only to verify the route and is not a production record.
+- The final full backend suite had the known intermittent Evolution synchronization failure (11/13 Evolution tests in that run); all other test files passed. No Evolution/provider code was changed.
+- No commit, push, deploy, production/AWS database change, or database reset was performed.
+
+### 2026-10-02 20:53 (+05:30)
+
+- Polished the Phase 5 CRM integration using existing APIs only.
+- Overview now shows real pending/overdue Follow-ups, recent Lead status badges, and a status-mix summary derived from the loaded Lead records; API failure remains an explicit unavailable state.
+- Leads now show formatted phone numbers and color-coded persisted CRM statuses.
+- Incomplete Conversations now provide explicit error/retry states and a collected-answer progress indicator while remaining separate from completed Leads and CRM actions.
+- Follow-up create, reschedule, complete, and cancel flows refresh from the API after mutation so grouping stays authoritative.
+- Added responsive presentation refinements for status summaries, queue cards, progress bars, phone cells, and mobile Follow-up/detail layouts.
+- Only frontend CRM screens/styles and this handoff record were changed for Phase 5; no backend, Prisma, WhatsApp, questionnaire, AI, provider, n8n, Docker, or production files were modified.
+- Frontend lint/build passed with the existing `frontend/src/lib/api.ts` warning. Backend build and Prisma validation passed. `git diff --check` passed.
+- Full backend regression reproduced the known intermittent Evolution synchronization failure: 12/13 Evolution tests passed in that run. Independent Evolution rerun reproduced only the unsupported-media synchronization timeout at 12/13; no Evolution code was changed.
+- No commit, push, deploy, or database mutation was performed.
+
+### 2026-10-02 21:05 (+05:30)
+
+- Fixed the WhatsApp group-JID mobile edge case in `conversationService.ts`: identities ending in `@g.us` now persist an empty `shared_mobile` value instead of a group identifier, while individual WhatsApp JIDs retain normalized sender-number persistence.
+- Added focused database coverage for both individual sender mobile persistence and group identity exclusion.
+- Focused database tests passed 15/15. Full backend validation, backend build, Prisma validation, frontend lint/build, and `git diff --check` were rerun.
+- The full backend suite reproduced one known intermittent Evolution synchronization failure: `accepts a valid webhook body near the 1 MiB route limit`. No Evolution/provider code was changed.

@@ -1,4 +1,6 @@
 import prisma from '../db/prisma';
+import { LeadStatus } from '@prisma/client';
+import { createActivity } from './adminActivityService';
 
 export interface LeadFilter {
   page?: number;
@@ -8,6 +10,22 @@ export interface LeadFilter {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
+
+export const LEAD_STATUSES = [
+  'NEW',
+  'CONTACTED',
+  'QUALIFIED',
+  'IN_PROGRESS',
+  'ON_HOLD',
+  'CONVERTED',
+  'NOT_INTERESTED',
+  'CLOSED'
+] as const;
+
+export type AdminLeadStatus = typeof LEAD_STATUSES[number];
+
+const readableStatus = (status: AdminLeadStatus) =>
+  status.toLowerCase().replace(/(^|_)(\w)/g, (_, separator, character) => `${separator ? ' ' : ''}${character.toUpperCase()}`);
 
 export class AdminLeadService {
   async getIncompleteConversations() {
@@ -85,6 +103,7 @@ export class AdminLeadService {
           city: true,
           flowType: true,
           preferredComm: true,
+          status: true,
           createdAt: true
         }
       }),
@@ -116,9 +135,44 @@ export class AdminLeadService {
         preferredComm: true,
         phoneCallTime: true,
         flowType: true,
+        status: true,
         answers: true,
         createdAt: true
       }
+    });
+  }
+
+  async updateLeadStatus(id: string, status: AdminLeadStatus) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.lead.findUnique({ where: { id }, select: { status: true } });
+      if (!existing) {
+        const error = new Error('Lead not found');
+        (error as Error & { code?: string }).code = 'P2025';
+        throw error;
+      }
+      const lead = await tx.lead.update({
+        where: { id },
+        data: { status: status as LeadStatus },
+        select: {
+          id: true,
+          conversationId: true,
+          name: true,
+          organization: true,
+          email: true,
+          mobile: true,
+          city: true,
+          preferredComm: true,
+          phoneCallTime: true,
+          flowType: true,
+          status: true,
+          answers: true,
+          createdAt: true
+        }
+      });
+      if (existing.status !== status) {
+        await createActivity(tx, id, 'LEAD_STATUS_CHANGED', `Status changed to ${readableStatus(status)}`);
+      }
+      return lead;
     });
   }
 

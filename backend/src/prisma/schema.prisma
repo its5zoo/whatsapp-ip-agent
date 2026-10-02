@@ -7,6 +7,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  IN_PROGRESS
+  ON_HOLD
+  CONVERTED
+  NOT_INTERESTED
+  CLOSED
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum ActivityType {
+  LEAD_CREATED
+  LEAD_STATUS_CHANGED
+  FOLLOW_UP_CREATED
+  FOLLOW_UP_RESCHEDULED
+  FOLLOW_UP_COMPLETED
+  FOLLOW_UP_CANCELLED
+  NOTE_ADDED
+  NOTE_EDITED
+  NOTE_DELETED
+}
+
 model Conversation {
   id                String    @id @default(uuid())
   channel           String
@@ -39,12 +68,59 @@ model Lead {
 
   flowType        String    @map("flow_type")
   answers         Json      @default("{}")
+  status          LeadStatus @default(NEW)
 
   createdAt       DateTime  @default(now()) @map("created_at")
+
+  followUps       FollowUp[]
+  notes           InternalNote[]
+  activities      Activity[]
 
   @@index([flowType])
   @@index([email])
   @@map("leads")
+}
+
+model FollowUp {
+  id          String         @id @default(uuid())
+  leadId      String         @map("lead_id")
+  lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime       @map("scheduled_at")
+  note        String
+  status      FollowUpStatus @default(PENDING)
+  completedAt DateTime?      @map("completed_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@index([leadId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("follow_ups")
+}
+
+model InternalNote {
+  id        String   @id @default(uuid())
+  leadId    String   @map("lead_id")
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([leadId])
+  @@map("internal_notes")
+}
+
+model Activity {
+  id          String       @id @default(uuid())
+  leadId      String       @map("lead_id")
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type        ActivityType
+  description String
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@index([leadId, createdAt])
+  @@index([type])
+  @@map("activities")
 }
 
 model ProcessedWhatsappMessage {

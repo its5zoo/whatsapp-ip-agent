@@ -19,7 +19,7 @@ export default function Login() {
         body: JSON.stringify({ username, password }),
       });
       router.push('/dashboard');
-    } catch (err: any) {
+    } catch {
       setError('Invalid credentials');
     }
   };

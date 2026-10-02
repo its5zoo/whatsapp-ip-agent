@@ -83,6 +83,11 @@ const completedAcknowledgement = 'Your existing enquiry will be kept. Our team c
 const completedClosedResponse =
   'Your previous enquiry has already been submitted. Please reply HELP to speak to our team, or BACK to start a new enquiry.';
 
+const getWhatsAppMobile = (externalUserId: string): string =>
+  externalUserId.endsWith('@g.us')
+    ? ''
+    : externalUserId.split('@', 1)[0].replace(/^\+/, '');
+
 const buildLeadData = (data: ConversationData): LeadCreateInput => ({
   name: data['shared_name'] || '',
   organization: data['shared_org'] || '',
@@ -158,13 +163,16 @@ export class ConversationService {
     }
 
     // 2. Reconstruct ConversationState
+    const storedData = conversation.data as ConversationData;
+    const data = channel === 'whatsapp' && !storedData.shared_mobile
+      ? { ...storedData, shared_mobile: getWhatsAppMobile(externalUserId) }
+      : storedData;
     const state: ConversationState = {
       currentQuestionId: conversation.currentQuestionId,
-      data: conversation.data as ConversationData,
+      data,
       isCompleted: conversation.isCompleted
     };
 
-    const data = state.data;
     const pending = getContinuityMeta(data);
     const stale = now.getTime() - conversation.updatedAt.getTime() >= STALE_AFTER_MS;
 
@@ -179,7 +187,10 @@ export class ConversationService {
 
     if (isNewConversation) {
       const response = `${WELCOME_MESSAGE}\n\n${getQuestionResponse(QUESTIONNAIRE.main_menu)}`;
-      await conversationRepository.updateState(conversation.id, 'main_menu', {}, false, db);
+      const initialData = channel === 'whatsapp'
+        ? { shared_mobile: getWhatsAppMobile(externalUserId) }
+        : {};
+      await conversationRepository.updateState(conversation.id, 'main_menu', initialData, false, db);
       return { response, notifications };
     }
 

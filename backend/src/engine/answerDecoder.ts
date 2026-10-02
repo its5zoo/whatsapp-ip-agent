@@ -9,6 +9,9 @@ export interface DecodedAnswer {
 
 export function decodeAnswers(answers: Record<string, any>): DecodedAnswer[] {
   const result: DecodedAnswer[] = [];
+  const persistedFieldLabels: Record<string, string> = {
+    shared_mobile: 'Mobile Number:'
+  };
 
   for (const [key, value] of Object.entries(answers)) {
     // Skip internal fields
@@ -18,7 +21,7 @@ export function decodeAnswers(answers: Record<string, any>): DecodedAnswer[] {
     const rawValueStr = String(value);
 
     let displayValue = rawValueStr;
-    let questionLabel = key;
+    let questionLabel = persistedFieldLabels[key] || key;
 
     if (questionDef) {
       const lines = questionDef.text.split('\n');

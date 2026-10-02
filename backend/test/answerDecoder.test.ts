@@ -51,11 +51,11 @@ test.describe('Answer Decoder', () => {
 
     const mobile = decoded.find(d => d.questionId === 'shared_mobile');
     assert.strictEqual(mobile?.displayValue, '9999999999');
-    assert.strictEqual(mobile?.questionLabel, '4. Mobile Number:');
+    assert.strictEqual(mobile?.questionLabel, 'Mobile Number:');
 
     const city = decoded.find(d => d.questionId === 'shared_city');
     assert.strictEqual(city?.displayValue, 'Bhubaneswar, India');
-    assert.strictEqual(city?.questionLabel, '5. City/Country:');
+    assert.strictEqual(city?.questionLabel, '4. City/Country:');
 
     const comm = decoded.find(d => d.questionId === 'shared_comm');
     assert.strictEqual(comm?.displayValue, 'WhatsApp');

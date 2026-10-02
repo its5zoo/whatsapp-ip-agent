@@ -15,6 +15,11 @@ import { whatsappDeliveryService } from './services/whatsappDeliveryService';
 export function buildApp(): FastifyInstance {
   const app = Fastify({
     logger: true,
+    ajv: {
+      customOptions: {
+        removeAdditional: false
+      }
+    }
   });
 
   app.register(cors, {

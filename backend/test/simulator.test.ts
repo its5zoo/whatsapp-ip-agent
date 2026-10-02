@@ -95,7 +95,6 @@ describe('Simulator REST API', () => {
     await app.inject({ method: 'POST', url: '/simulator/message', payload: { userId: 'sim_other', message: 'Alice' } }); // name
     await app.inject({ method: 'POST', url: '/simulator/message', payload: { userId: 'sim_other', message: 'Wonderland Inc' } }); // org
     await app.inject({ method: 'POST', url: '/simulator/message', payload: { userId: 'sim_other', message: 'alice@example.com' } }); // email
-    await app.inject({ method: 'POST', url: '/simulator/message', payload: { userId: 'sim_other', message: '111222' } }); // mobile
     await app.inject({ method: 'POST', url: '/simulator/message', payload: { userId: 'sim_other', message: 'London' } }); // city
     
     // Completion
@@ -116,6 +115,7 @@ describe('Simulator REST API', () => {
     assert.strictEqual(conv!.isCompleted, true);
     assert.ok(conv!.lead);
     assert.strictEqual(conv!.lead.name, 'Alice');
+    assert.strictEqual(conv!.lead.mobile, '');
   });
 
   test('8. Completed conversation restart behavior', async () => {

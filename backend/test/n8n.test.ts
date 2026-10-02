@@ -41,8 +41,7 @@ test.describe('N8N Notifier Integration', () => {
     await conversationService.handleMessage('simulator', userId, 'Class 9'); // -> shared_name
     await conversationService.handleMessage('simulator', userId, 'Jane Doe'); // -> shared_org
     await conversationService.handleMessage('simulator', userId, 'Acme Corp'); // -> shared_email
-    await conversationService.handleMessage('simulator', userId, 'jane@acme.com'); // -> shared_mobile
-    await conversationService.handleMessage('simulator', userId, '1234567890'); // -> shared_city
+    await conversationService.handleMessage('simulator', userId, 'jane@acme.com'); // -> shared_city
     await conversationService.handleMessage('simulator', userId, 'New York'); // -> shared_comm
     await conversationService.handleMessage('simulator', userId, '1'); // -> completes
   }
@@ -120,7 +119,7 @@ test.describe('N8N Notifier Integration', () => {
     assert.ok(lead.conversationId);
     assert.strictEqual(lead.flowType, 'trademark');
     assert.strictEqual(lead.organization, 'Acme Corp');
-    assert.strictEqual(lead.mobile, '1234567890');
+    assert.strictEqual(lead.mobile, '');
     assert.strictEqual(lead.city, 'New York');
     assert.strictEqual(lead.preferredComm, '1');
     assert.strictEqual(lead.phoneCallTime, null);

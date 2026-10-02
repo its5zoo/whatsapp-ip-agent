@@ -165,6 +165,7 @@ test.describe('Admin API', () => {
     const body = JSON.parse(res.payload);
     assert.strictEqual(body.leads.length, 1);
     assert.strictEqual(body.leads[0].name, 'John Doe');
+    assert.strictEqual(body.leads[0].status, 'NEW');
     assert.ok(!body.leads[0].answers); // Full answers not included in list
     assert.strictEqual(body.pagination.total, 1);
   });
@@ -348,6 +349,7 @@ test.describe('Admin API', () => {
     assert.strictEqual(res.statusCode, 200);
     const body = JSON.parse(res.payload);
     assert.strictEqual(body.lead.name, 'John Doe');
+    assert.strictEqual(body.lead.status, 'NEW');
     assert.strictEqual(body.lead.answers, undefined);
     assert.ok(body.lead.decodedAnswers);
 
@@ -391,5 +393,291 @@ test.describe('Admin API', () => {
       url: '/admin/stats'
     });
     assert.strictEqual(res.statusCode, 401);
+  });
+
+  test('7. Lead status is protected, validated, persisted, and returned', async () => {
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'admin_test', password: 'password123' }
+    });
+    const validCookie = `auth_token=${loginRes.cookies.find((c: any) => c.name === 'auth_token').value}`;
+    const lead = await prisma.lead.findFirstOrThrow();
+
+    const unauthenticated = await app.inject({
+      method: 'PATCH',
+      url: `/admin/leads/${lead.id}/status`,
+      payload: { status: 'CONTACTED' }
+    });
+    assert.strictEqual(unauthenticated.statusCode, 401);
+
+    const contacted = await app.inject({
+      method: 'PATCH',
+      url: `/admin/leads/${lead.id}/status`,
+      headers: { cookie: validCookie },
+      payload: { status: 'CONTACTED' }
+    });
+    assert.strictEqual(contacted.statusCode, 200);
+    assert.strictEqual(JSON.parse(contacted.payload).lead.status, 'CONTACTED');
+
+    const qualified = await app.inject({
+      method: 'PATCH',
+      url: `/admin/leads/${lead.id}/status`,
+      headers: { cookie: validCookie },
+      payload: { status: 'QUALIFIED' }
+    });
+    assert.strictEqual(qualified.statusCode, 200);
+    assert.strictEqual(JSON.parse(qualified.payload).lead.status, 'QUALIFIED');
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/admin/leads/${lead.id}/status`,
+      headers: { cookie: validCookie },
+      payload: { status: 'invalid' }
+    });
+    assert.strictEqual(invalid.statusCode, 400);
+
+    const malformed = await app.inject({
+      method: 'PATCH',
+      url: `/admin/leads/${lead.id}/status`,
+      headers: { cookie: validCookie },
+      payload: { status: 'CONTACTED', extra: true }
+    });
+    assert.strictEqual(malformed.statusCode, 400);
+
+    const missing = await app.inject({
+      method: 'PATCH',
+      url: '/admin/leads/missing-lead/status',
+      headers: { cookie: validCookie },
+      payload: { status: 'CONTACTED' }
+    });
+    assert.strictEqual(missing.statusCode, 404);
+
+    const persisted = await prisma.lead.findUnique({ where: { id: lead.id } });
+    assert.strictEqual(persisted?.status, 'QUALIFIED');
+    const statusActivities = await prisma.activity.findMany({ where: { leadId: lead.id } });
+    assert.deepStrictEqual(statusActivities.map(activity => activity.description), ['Status changed to Contacted', 'Status changed to Qualified']);
+  });
+
+  test('8. Follow-ups support protected CRUD, filtering, and multiple records per Lead', async () => {
+    const lead = await prisma.lead.findFirstOrThrow();
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'admin_test', password: 'password123' }
+    });
+    const validCookie = `auth_token=${loginRes.cookies.find((c: any) => c.name === 'auth_token').value}`;
+    const future = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const past = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+
+    const unauthenticated = await app.inject({
+      method: 'POST',
+      url: '/admin/follow-ups',
+      payload: { leadId: lead.id, scheduledAt: future, note: 'Call customer' }
+    });
+    assert.strictEqual(unauthenticated.statusCode, 401);
+
+    const invalidLead = await app.inject({
+      method: 'POST',
+      url: '/admin/follow-ups',
+      headers: { cookie: validCookie },
+      payload: { leadId: 'missing-lead', scheduledAt: future, note: 'Call customer' }
+    });
+    assert.strictEqual(invalidLead.statusCode, 404);
+
+    const invalidDate = await app.inject({
+      method: 'POST',
+      url: '/admin/follow-ups',
+      headers: { cookie: validCookie },
+      payload: { leadId: lead.id, scheduledAt: 'not-a-date', note: 'Call customer' }
+    });
+    assert.strictEqual(invalidDate.statusCode, 400);
+
+    const missingNote = await app.inject({
+      method: 'POST',
+      url: '/admin/follow-ups',
+      headers: { cookie: validCookie },
+      payload: { leadId: lead.id, scheduledAt: future, note: ' ' }
+    });
+    assert.strictEqual(missingNote.statusCode, 400);
+
+    const upcoming = await app.inject({
+      method: 'POST',
+      url: '/admin/follow-ups',
+      headers: { cookie: validCookie },
+      payload: { leadId: lead.id, scheduledAt: future, note: 'Call customer' }
+    });
+    assert.strictEqual(upcoming.statusCode, 201);
+    const upcomingFollowUp = JSON.parse(upcoming.payload).followUp;
+    assert.strictEqual(upcomingFollowUp.status, 'PENDING');
+
+    const overdue = await app.inject({
+      method: 'POST',
+      url: '/admin/follow-ups',
+      headers: { cookie: validCookie },
+      payload: { leadId: lead.id, scheduledAt: past, note: 'Send proposal' }
+    });
+    assert.strictEqual(overdue.statusCode, 201);
+    const overdueFollowUp = JSON.parse(overdue.payload).followUp;
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/admin/follow-ups',
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(list.statusCode, 200);
+    assert.strictEqual(JSON.parse(list.payload).followUps.length, 2);
+
+    const upcomingList = await app.inject({
+      method: 'GET',
+      url: '/admin/follow-ups?filter=upcoming',
+      headers: { cookie: validCookie }
+    });
+    assert.deepStrictEqual(JSON.parse(upcomingList.payload).followUps.map((item: any) => item.id), [upcomingFollowUp.id]);
+
+    const overdueList = await app.inject({
+      method: 'GET',
+      url: '/admin/follow-ups?filter=overdue',
+      headers: { cookie: validCookie }
+    });
+    assert.deepStrictEqual(JSON.parse(overdueList.payload).followUps.map((item: any) => item.id), [overdueFollowUp.id]);
+
+    const filtered = await app.inject({
+      method: 'GET',
+      url: `/admin/follow-ups?leadId=${lead.id}`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(JSON.parse(filtered.payload).followUps.length, 2);
+
+    const rescheduled = await app.inject({
+      method: 'PATCH',
+      url: `/admin/follow-ups/${overdueFollowUp.id}`,
+      headers: { cookie: validCookie },
+      payload: { scheduledAt: future, note: 'Send revised proposal' }
+    });
+    assert.strictEqual(rescheduled.statusCode, 200);
+    assert.strictEqual(JSON.parse(rescheduled.payload).followUp.note, 'Send revised proposal');
+
+    const completed = await app.inject({
+      method: 'POST',
+      url: `/admin/follow-ups/${upcomingFollowUp.id}/complete`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(completed.statusCode, 200);
+    assert.strictEqual(JSON.parse(completed.payload).followUp.status, 'COMPLETED');
+    assert.ok(JSON.parse(completed.payload).followUp.completedAt);
+
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: `/admin/follow-ups/${overdueFollowUp.id}/cancel`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(cancelled.statusCode, 200);
+    assert.strictEqual(JSON.parse(cancelled.payload).followUp.status, 'CANCELLED');
+
+    const completedList = await app.inject({
+      method: 'GET',
+      url: '/admin/follow-ups?filter=completed',
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(JSON.parse(completedList.payload).followUps.length, 1);
+
+    const persisted = await prisma.followUp.findMany({ where: { leadId: lead.id } });
+    assert.strictEqual(persisted.length, 2);
+    assert.strictEqual((await prisma.lead.findUnique({ where: { id: lead.id } }))?.status, 'NEW');
+    const followUpActivities = await prisma.activity.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: 'asc' } });
+    assert.deepStrictEqual(followUpActivities.map(activity => activity.type), [
+      'FOLLOW_UP_CREATED',
+      'FOLLOW_UP_CREATED',
+      'FOLLOW_UP_RESCHEDULED',
+      'FOLLOW_UP_COMPLETED',
+      'FOLLOW_UP_CANCELLED'
+    ]);
+  });
+
+  test('9. Internal notes are protected, persistent, editable, deletable, and audited', async () => {
+    const lead = await prisma.lead.findFirstOrThrow();
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { username: 'admin_test', password: 'password123' }
+    });
+    const validCookie = `auth_token=${loginRes.cookies.find((c: any) => c.name === 'auth_token').value}`;
+
+    const unauthenticated = await app.inject({
+      method: 'GET',
+      url: `/admin/leads/${lead.id}/notes`
+    });
+    assert.strictEqual(unauthenticated.statusCode, 401);
+
+    const invalidLead = await app.inject({
+      method: 'POST',
+      url: '/admin/leads/missing-lead/notes',
+      headers: { cookie: validCookie },
+      payload: { content: 'Private note' }
+    });
+    assert.strictEqual(invalidLead.statusCode, 404);
+
+    const empty = await app.inject({
+      method: 'POST',
+      url: `/admin/leads/${lead.id}/notes`,
+      headers: { cookie: validCookie },
+      payload: { content: '   ' }
+    });
+    assert.strictEqual(empty.statusCode, 400);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/admin/leads/${lead.id}/notes`,
+      headers: { cookie: validCookie },
+      payload: { content: 'Call after the proposal review' }
+    });
+    assert.strictEqual(created.statusCode, 201);
+    const noteId = JSON.parse(created.payload).note.id;
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/admin/leads/${lead.id}/notes`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(listed.statusCode, 200);
+    assert.strictEqual(JSON.parse(listed.payload).notes[0].content, 'Call after the proposal review');
+
+    const edited = await app.inject({
+      method: 'PATCH',
+      url: `/admin/notes/${noteId}`,
+      headers: { cookie: validCookie },
+      payload: { content: 'Call after the revised proposal review' }
+    });
+    assert.strictEqual(edited.statusCode, 200);
+    assert.strictEqual(JSON.parse(edited.payload).note.content, 'Call after the revised proposal review');
+
+    const missingNote = await app.inject({
+      method: 'PATCH',
+      url: '/admin/notes/missing-note',
+      headers: { cookie: validCookie },
+      payload: { content: 'Updated' }
+    });
+    assert.strictEqual(missingNote.statusCode, 404);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/admin/notes/${noteId}`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(deleted.statusCode, 200);
+
+    const notes = await prisma.internalNote.findMany({ where: { leadId: lead.id } });
+    assert.strictEqual(notes.length, 0);
+    const activities = await prisma.activity.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: 'asc' } });
+    assert.deepStrictEqual(activities.slice(-3).map(activity => activity.type), ['NOTE_ADDED', 'NOTE_EDITED', 'NOTE_DELETED']);
+
+    const activityResponse = await app.inject({
+      method: 'GET',
+      url: `/admin/leads/${lead.id}/activity`,
+      headers: { cookie: validCookie }
+    });
+    assert.strictEqual(activityResponse.statusCode, 200);
+    assert.ok(JSON.parse(activityResponse.payload).activities.length >= 3);
   });
 });

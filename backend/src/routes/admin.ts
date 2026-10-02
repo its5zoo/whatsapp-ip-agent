@@ -1,8 +1,14 @@
 import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { authService } from '../services/authService';
 import { verifyAuthCookie } from '../middleware/auth';
-import { adminLeadService, LeadFilter } from '../services/adminLeadService';
+import { adminLeadService, LeadFilter, LEAD_STATUSES, AdminLeadStatus } from '../services/adminLeadService';
 import { decodeAnswers } from '../engine/answerDecoder';
+import {
+  adminFollowUpService,
+  FollowUpFilter
+} from '../services/adminFollowUpService';
+import { adminNoteService, MAX_NOTE_LENGTH } from '../services/adminNoteService';
+import { adminActivityService } from '../services/adminActivityService';
 
 const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
   const failedLoginAttempts = new Map<string, number[]>();
@@ -122,6 +128,193 @@ const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
       const { answers, ...leadWithoutAnswers } = lead;
 
       return { lead: { ...leadWithoutAnswers, decodedAnswers } };
+    });
+
+    protectedServer.get('/admin/leads/:id/notes', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const lead = await adminLeadService.getLeadById(id);
+      if (!lead) return reply.status(404).send({ error: 'Lead not found' });
+      return { notes: await adminNoteService.listForLead(id) };
+    });
+
+    protectedServer.post('/admin/leads/:id/notes', {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['content'],
+          properties: { content: { type: 'string', minLength: 1, maxLength: MAX_NOTE_LENGTH } }
+        }
+      }
+    }, async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const content = (request.body as { content: string }).content.trim();
+      if (!content) return reply.status(400).send({ error: 'content is required' });
+      const note = await adminNoteService.create(id, content);
+      if (!note) return reply.status(404).send({ error: 'Lead not found' });
+      return reply.status(201).send({ note });
+    });
+
+    protectedServer.patch('/admin/notes/:id', {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['content'],
+          properties: { content: { type: 'string', minLength: 1, maxLength: MAX_NOTE_LENGTH } }
+        }
+      }
+    }, async (request, reply) => {
+      const content = (request.body as { content: string }).content.trim();
+      if (!content) return reply.status(400).send({ error: 'content is required' });
+      const note = await adminNoteService.update((request.params as { id: string }).id, content);
+      if (!note) return reply.status(404).send({ error: 'Note not found' });
+      return { note };
+    });
+
+    protectedServer.delete('/admin/notes/:id', async (request, reply) => {
+      const deleted = await adminNoteService.delete((request.params as { id: string }).id);
+      if (!deleted) return reply.status(404).send({ error: 'Note not found' });
+      return { success: true };
+    });
+
+    protectedServer.get('/admin/leads/:id/activity', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const lead = await adminLeadService.getLeadById(id);
+      if (!lead) return reply.status(404).send({ error: 'Lead not found' });
+      return { activities: await adminActivityService.listForLead(id) };
+    });
+
+    protectedServer.patch('/admin/leads/:id/status', {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['status'],
+          properties: {
+            status: { type: 'string', enum: [...LEAD_STATUSES] }
+          }
+        }
+      }
+    }, async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = request.body as Record<string, unknown>;
+      if (Object.keys(body).length !== 1 || !Object.prototype.hasOwnProperty.call(body, 'status')) {
+        return reply.status(400).send({ error: 'Request body must contain only status' });
+      }
+      const { status } = body as { status: AdminLeadStatus };
+
+      try {
+        const lead = await adminLeadService.updateLeadStatus(id, status);
+        const { answers, ...leadWithoutAnswers } = lead;
+        return { lead: { ...leadWithoutAnswers, decodedAnswers: decodeAnswers(answers as any) } };
+      } catch (error: any) {
+        if (error?.code === 'P2025') {
+          return reply.status(404).send({ error: 'Lead not found' });
+        }
+        throw error;
+      }
+    });
+
+    protectedServer.get('/admin/follow-ups', {
+      schema: {
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            filter: { type: 'string', enum: ['upcoming', 'overdue', 'completed'] },
+            leadId: { type: 'string' }
+          }
+        }
+      }
+    }, async (request) => {
+      const query = request.query as { filter?: FollowUpFilter; leadId?: string };
+      return { followUps: await adminFollowUpService.list(query.filter, query.leadId) };
+    });
+
+    protectedServer.post('/admin/follow-ups', {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['leadId', 'scheduledAt', 'note'],
+          properties: {
+            leadId: { type: 'string', minLength: 1 },
+            scheduledAt: { type: 'string', minLength: 1 },
+            note: { type: 'string', minLength: 1 }
+          }
+        }
+      }
+    }, async (request, reply) => {
+      const body = request.body as { leadId: string; scheduledAt: string; note: string };
+      const scheduledAt = new Date(body.scheduledAt);
+      if (Number.isNaN(scheduledAt.getTime())) {
+        return reply.status(400).send({ error: 'scheduledAt must be a valid date' });
+      }
+      if (!body.note.trim()) {
+        return reply.status(400).send({ error: 'note is required' });
+      }
+
+      const followUp = await adminFollowUpService.create({
+        leadId: body.leadId,
+        scheduledAt,
+        note: body.note.trim()
+      });
+      if (!followUp) return reply.status(404).send({ error: 'Lead not found' });
+      return reply.status(201).send({ followUp });
+    });
+
+    protectedServer.patch('/admin/follow-ups/:id', {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          minProperties: 1,
+          properties: {
+            scheduledAt: { type: 'string', minLength: 1 },
+            note: { type: 'string', minLength: 1 }
+          }
+        }
+      }
+    }, async (request, reply) => {
+      const body = request.body as { scheduledAt?: string; note?: string };
+      const data: { scheduledAt?: Date; note?: string } = {};
+      if (body.scheduledAt !== undefined) {
+        const scheduledAt = new Date(body.scheduledAt);
+        if (Number.isNaN(scheduledAt.getTime())) {
+          return reply.status(400).send({ error: 'scheduledAt must be a valid date' });
+        }
+        data.scheduledAt = scheduledAt;
+      }
+      if (body.note !== undefined) {
+        if (!body.note.trim()) return reply.status(400).send({ error: 'note is required' });
+        data.note = body.note.trim();
+      }
+
+      const followUp = await adminFollowUpService.update(
+        (request.params as { id: string }).id,
+        data
+      );
+      if (!followUp) return reply.status(404).send({ error: 'Follow-up not found' });
+      return { followUp };
+    });
+
+    protectedServer.post('/admin/follow-ups/:id/complete', async (request, reply) => {
+      const followUp = await adminFollowUpService.setStatus(
+        (request.params as { id: string }).id,
+        'COMPLETED'
+      );
+      if (!followUp) return reply.status(404).send({ error: 'Follow-up not found' });
+      return { followUp };
+    });
+
+    protectedServer.post('/admin/follow-ups/:id/cancel', async (request, reply) => {
+      const followUp = await adminFollowUpService.setStatus(
+        (request.params as { id: string }).id,
+        'CANCELLED'
+      );
+      if (!followUp) return reply.status(404).send({ error: 'Follow-up not found' });
+      return { followUp };
     });
 
     protectedServer.get('/admin/stats', async (request, reply) => {

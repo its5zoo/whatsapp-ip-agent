@@ -23,6 +23,10 @@
 # misc
 .DS_Store
 *.pem
+caddy-local-*.crt
+caddy-local-*.key
+caddy-localhost.crt
+caddy-localhost.key
 
 # debug
 npm-debug.log*

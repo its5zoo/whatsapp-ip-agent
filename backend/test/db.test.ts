@@ -84,7 +84,6 @@ describe('Database and Service Layer Integration', () => {
     await conversationService.handleMessage('simulator', 'user2', 'John'); // name
     await conversationService.handleMessage('simulator', 'user2', 'Acme'); // org
     await conversationService.handleMessage('simulator', 'user2', 'john@acme.com'); // email
-    await conversationService.handleMessage('simulator', 'user2', '123456'); // mobile
     await conversationService.handleMessage('simulator', 'user2', 'New York'); // city
     
     // Choose Email for comms to finish directly
@@ -107,11 +106,48 @@ describe('Database and Service Layer Integration', () => {
     assert.strictEqual(lead.name, 'John');
     assert.strictEqual(lead.organization, 'Acme');
     assert.strictEqual(lead.email, 'john@acme.com');
-    assert.strictEqual(lead.mobile, '123456');
+    assert.strictEqual(lead.mobile, '');
     assert.strictEqual(lead.city, 'New York');
     assert.strictEqual(lead.preferredComm, '3');
     assert.strictEqual(lead.phoneCallTime, null);
     assert.strictEqual(lead.flowType, 'patent');
+    assert.strictEqual(lead.status, 'NEW');
+  });
+
+  test('WhatsApp sender identity supplies the persisted mobile value', async () => {
+    const userId = '15551112222@s.whatsapp.net';
+    await conversationService.handleMessage('whatsapp', userId, 'hi');
+    await conversationService.handleMessage('whatsapp', userId, '1');
+    await conversationService.handleMessage('whatsapp', userId, '1');
+    await conversationService.handleMessage('whatsapp', userId, '1');
+    await conversationService.handleMessage('whatsapp', userId, '1');
+    await conversationService.handleMessage('whatsapp', userId, 'Patent description');
+    await conversationService.handleMessage('whatsapp', userId, 'Jane Doe');
+    await conversationService.handleMessage('whatsapp', userId, 'Acme Corp');
+    const cityPrompt = await conversationService.handleMessage('whatsapp', userId, 'jane@acme.com');
+
+    assert.strictEqual(cityPrompt, '4. City/Country:');
+    await conversationService.handleMessage('whatsapp', userId, 'New York');
+    await conversationService.handleMessage('whatsapp', userId, '3');
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { channel_externalUserId: { channel: 'whatsapp', externalUserId: userId } },
+      include: { lead: true }
+    });
+    assert.strictEqual(conversation?.lead?.mobile, '15551112222');
+    assert.strictEqual((conversation?.data as any)?.shared_mobile, '15551112222');
+  });
+
+  test('WhatsApp group identity does not populate a person mobile value', async () => {
+    const groupId = '120363000000000000@g.us';
+    await conversationService.handleMessage('whatsapp', groupId, 'hi');
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { channel_externalUserId: { channel: 'whatsapp', externalUserId: groupId } }
+    });
+    assert.ok(conversation);
+    assert.strictEqual((conversation.data as any)?.shared_mobile, '');
+    assert.strictEqual(conversation.isCompleted, false);
   });
 
   test('8. Repeated Lead upsert does not duplicate', async () => {
@@ -142,6 +178,7 @@ describe('Database and Service Layer Integration', () => {
       where: { conversationId: conv!.id }
     });
     assert.strictEqual(lead!.name, 'John Updated');
+    assert.strictEqual(lead!.status, 'NEW');
   });
 
   test('8a. Completed conversation repairs a Lead after transient persistence failure', async () => {
