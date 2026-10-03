@@ -31,7 +31,7 @@ export class AdminActivityService {
   async listForLead(leadId: string) {
     return prisma.activity.findMany({
       where: { leadId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
       select: { id: true, leadId: true, type: true, description: true, createdAt: true }
     });
   }

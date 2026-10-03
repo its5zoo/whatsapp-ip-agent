@@ -119,7 +119,7 @@ describe('Conversation Continuity', () => {
     });
 
     const before = await prisma.conversation.findUnique({ where: { id: conv!.id } });
-    const leadBefore = await prisma.lead.findUnique({ where: { conversationId: conv!.id } });
+    const leadBefore = await prisma.lead.findFirst({ where: { conversationId: conv!.id }, orderBy: { createdAt: 'desc' } });
     const aiCall = mock.method(aiFallbackService, 'interpretChoice');
     const res = await conversationService.handleMessage('simulator', 'completed1', 'Please update my email', now);
     assert.strictEqual(
@@ -130,7 +130,7 @@ describe('Conversation Continuity', () => {
     assert.deepStrictEqual(updated!.data, before!.data);
     assert.strictEqual(updated!.isCompleted, true);
     assert.deepStrictEqual(
-      await prisma.lead.findUnique({ where: { conversationId: conv!.id } }),
+      await prisma.lead.findFirst({ where: { conversationId: conv!.id }, orderBy: { createdAt: 'desc' } }),
       leadBefore
     );
     assert.strictEqual(aiCall.mock.callCount(), 0);
@@ -156,10 +156,10 @@ Would you like to create a new enquiry?
     }
     const conversation = await prisma.conversation.findFirst({
       where: { externalUserId: 'completed1' },
-      include: { lead: true }
+      include: { leads: true }
     });
     assert.strictEqual(conversation!.isCompleted, true);
-    assert.ok(conversation!.lead);
+    assert.ok(conversation!.leads[0]);
     await conversationService.handleMessage('simulator', 'completed1', 'BACK', now);
   });
 

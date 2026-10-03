@@ -42,6 +42,12 @@ The project is a deterministic WhatsApp IP enquiry agent for GenioBrain IP Solut
 
 The completed-conversation contract, Evolution webhook test synchronization work, WhatsApp sender-mobile change, frontend CRM UX pass, local HTTPS/API development setup, Phase 2 persisted Lead status capability, and Phase 3 persistent CRM Follow-ups are implemented and locally verified. All changes remain intentionally uncommitted pending final authorization. No commit or push has been made.
 
+The current uncommitted CRM correction also supports multiple independent enquiry
+records per Conversation. The one-to-many relation is represented by the
+`20261003090000_remove_lead_conversation_unique` migration, which removes the
+old unique constraint and adds a non-unique `conversation_id` index without
+rewriting existing Lead rows.
+
 The most important current product rule is:
 
 > A completed enquiry is closed. Normal messages must not edit, delete, overwrite, restart, or create anything for that completed enquiry. Only explicit `BACK`, followed by option `1`, may begin a new enquiry.
@@ -119,7 +125,19 @@ The current uncommitted files are:
 
 Do not discard these changes without reviewing them. Do not modify unrelated user work.
 
-The local development database, local test database, and local Docker application database have all received the tracked migrations through `20261002202000_add_lead_status`. No production or AWS database was touched.
+The current final audit also includes:
+
+- `backend/src/prisma/migrations/20261003090000_remove_lead_conversation_unique/migration.sql`
+  as an untracked migration directory containing only the unique-index removal
+  and replacement non-unique index creation;
+- no staged changes, commits, pushes, or deployments;
+- pre-existing untracked scratch files `tsx` and
+  `whatsapp-ip-agent-backend@1.0.0`, which remain untouched.
+
+The local development database has received all seven migrations through
+`20261003090000_remove_lead_conversation_unique`; the local test database was
+reset by the test harness and currently contains zero CRM rows. No production
+or AWS database was touched.
 
 ## 3. Recent committed history
 

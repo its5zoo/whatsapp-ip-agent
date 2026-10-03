@@ -46,7 +46,7 @@ model Conversation {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  lead              Lead?
+  leads             Lead[]
 
   @@unique([channel, externalUserId])
   @@index([isCompleted])
@@ -55,7 +55,7 @@ model Conversation {
 
 model Lead {
   id              String    @id @default(uuid())
-  conversationId  String    @unique @map("conversation_id")
+  conversationId  String    @map("conversation_id")
   conversation    Conversation @relation(fields: [conversationId], references: [id])
 
   name            String
@@ -78,6 +78,7 @@ model Lead {
 
   @@index([flowType])
   @@index([email])
+  @@index([conversationId])
   @@map("leads")
 }
 

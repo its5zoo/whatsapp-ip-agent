@@ -89,6 +89,11 @@ const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
         page: query.page ? parseInt(query.page, 10) : undefined,
         limit: query.limit ? parseInt(query.limit, 10) : undefined,
         flowType: query.flowType,
+        status: query.status,
+        city: query.city,
+        source: query.source,
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
         search: query.search,
         sortBy: query.sortBy,
         sortOrder: query.sortOrder
@@ -125,9 +130,14 @@ const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
 
       // Add decoded answers
       const decodedAnswers = decodeAnswers(lead.answers as any);
-      const { answers, ...leadWithoutAnswers } = lead;
-
-      return { lead: { ...leadWithoutAnswers, decodedAnswers } };
+      const { answers, conversation, ...leadWithoutAnswers } = lead;
+      return {
+        lead: {
+          ...leadWithoutAnswers,
+          decodedAnswers,
+          otherEnquiries: conversation.leads
+        }
+      };
     });
 
     protectedServer.get('/admin/leads/:id/notes', async (request, reply) => {

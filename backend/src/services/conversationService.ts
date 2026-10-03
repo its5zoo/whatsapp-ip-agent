@@ -6,6 +6,7 @@ import { aiFallbackService } from '../ai/aiFallbackService';
 import { env } from '../config/env';
 import { QUESTIONNAIRE } from '../engine/questions';
 import { n8nNotifier } from './n8nNotifier';
+import { createActivity } from './adminActivityService';
 import { ENGINE_CONFIG } from '../engine/constants';
 import { getQuestionResponse } from '../engine/engine';
 import { LeadCreateInput } from '../db/repositories/leadRepository';
@@ -177,11 +178,12 @@ export class ConversationService {
     const stale = now.getTime() - conversation.updatedAt.getTime() >= STALE_AFTER_MS;
 
     if (conversation.isCompleted && !(await leadRepository.findByConversationId(conversation.id, db))) {
-      const recoveredLead = await leadRepository.upsertFromConversation(
+      const recoveredLead = await leadRepository.createFromConversation(
         conversation.id,
         buildLeadData(withoutContinuityMeta(data)),
         db
       );
+      await createActivity(db, recoveredLead.id, 'LEAD_CREATED', 'Lead created');
       notifications.push(recoveredLead);
     }
 
@@ -324,11 +326,12 @@ export class ConversationService {
     // 5. If completed, extract Lead fields and upsert Lead
     if (result.completed) {
       const leadAnswers = withoutContinuityMeta(result.state.data);
-      const lead = await leadRepository.upsertFromConversation(
+      const lead = await leadRepository.createFromConversation(
         conversation.id,
         buildLeadData(leadAnswers),
         db
       );
+      await createActivity(db, lead.id, 'LEAD_CREATED', 'Lead created');
 
       // Fire n8n only if this is the moment the conversation became completed
       if (!conversation.isCompleted) {

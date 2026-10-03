@@ -142,6 +142,7 @@ export default function LeadDetail({ params }: { params: Promise<{ id: string }>
       <section><h2 className="detail-section-title">Enquiry</h2><div className="meta-grid">
         <div><strong>Service</strong><span className={`service-label flow-${lead.flowType}`}>{lead.flowType}</span></div><div><strong>Preferred communication</strong>{lead.preferredComm || '—'}</div><div><strong>Contact time</strong>{lead.phoneCallTime || '—'}</div>
       </div></section>
+      {lead.otherEnquiries && lead.otherEnquiries.length > 0 && <section><h2 className="detail-section-title">Other enquiries</h2><div className="detail-follow-ups">{lead.otherEnquiries.map(other => <Link href={`/dashboard/leads/${other.id}`} className="detail-follow-up" key={other.id}><div><strong>{other.flowType}</strong><span>{new Date(other.createdAt).toLocaleString()}</span></div><span className={`status-pill status-${other.status.toLowerCase()}`}>{other.status}</span></Link>)}</div></section>}
       <section><h2 className="detail-section-title">Questionnaire answers</h2><table className="table"><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody>
         {lead.decodedAnswers?.map((answer, index) => <tr key={`${answer.questionId}-${index}`}><td>{answer.questionLabel}</td><td>{answer.displayValue}</td></tr>)}
       </tbody></table></section>

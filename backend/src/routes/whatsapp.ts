@@ -5,6 +5,7 @@ import { createWhatsAppProvider } from '../whatsapp/providers';
 import { conversationService } from '../services/conversationService';
 import prisma from '../db/prisma';
 import { whatsappDeliveryService } from '../services/whatsappDeliveryService';
+import { whatsappOutboundMessageRepository } from '../db/repositories/whatsappOutboundMessageRepository';
 
 const WHATSAPP_WEBHOOK_BODY_LIMIT = 1024 * 1024;
 const pendingWebhookProcessing = new Set<Promise<void>>();
@@ -175,14 +176,11 @@ export const whatsappRoutes: FastifyPluginAsync = async (server) => {
         await tx.processedWhatsappMessage.create({
           data: { messageId, waId }
         });
-        await tx.whatsappOutboundMessage.create({
-          data: {
-            inboundMessageId: messageId,
-            waId,
-            text: env.WHATSAPP_REPLY_UNSUPPORTED,
-            status: 'pending'
-          }
-        });
+        await whatsappOutboundMessageRepository.create({
+          inboundMessageId: messageId,
+          waId,
+          text: env.WHATSAPP_REPLY_UNSUPPORTED
+        }, tx);
       });
     } catch (error: any) {
       if (error.code === 'P2002') {

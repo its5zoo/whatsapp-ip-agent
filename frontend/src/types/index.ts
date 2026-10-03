@@ -17,6 +17,14 @@ export interface Lead {
     rawValue: string;
     displayValue: string;
   }[];
+  conversationId?: string;
+  otherEnquiries?: {
+    id: string;
+    name: string;
+    flowType: string;
+    status: LeadStatus;
+    createdAt: string;
+  }[];
 }
 
 export type LeadStatus =

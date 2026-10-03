@@ -109,13 +109,13 @@ describe('Simulator REST API', () => {
 
     const conv = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'sim_other' } },
-      include: { lead: true }
+      include: { leads: true }
     });
     
     assert.strictEqual(conv!.isCompleted, true);
-    assert.ok(conv!.lead);
-    assert.strictEqual(conv!.lead.name, 'Alice');
-    assert.strictEqual(conv!.lead.mobile, '');
+    assert.ok(conv!.leads[0]);
+    assert.strictEqual(conv!.leads[0].name, 'Alice');
+    assert.strictEqual(conv!.leads[0].mobile, '');
   });
 
   test('8. Completed conversation restart behavior', async () => {
@@ -169,7 +169,7 @@ Would you like to create a new enquiry?
 
     const conv = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'sim_other' } },
-      include: { lead: true }
+      include: { leads: true }
     });
     assert.strictEqual(conv!.isCompleted, false);
     assert.strictEqual(conv!.currentQuestionId, 'main_menu');
@@ -181,7 +181,7 @@ Would you like to create a new enquiry?
         }
       }
     }), leadCountBeforeConfirmation);
-    assert.ok(conv!.lead);
+    assert.ok(conv!.leads[0]);
   });
 
   test('9. Missing userId', async () => {

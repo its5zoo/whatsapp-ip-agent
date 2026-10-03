@@ -79,11 +79,28 @@ export class AdminFollowUpService {
   async update(id: string, data: { scheduledAt?: Date; note?: string }) {
     try {
       return await prisma.$transaction(async (tx) => {
-        const existing = await tx.followUp.findUnique({ where: { id }, select: { leadId: true, scheduledAt: true } });
+        const existing = await tx.followUp.findUnique({
+          where: { id },
+          select: { leadId: true, scheduledAt: true, note: true }
+        });
         if (!existing) return null;
         const followUp = await tx.followUp.update({ where: { id }, data, select: followUpSelect });
-        if (data.scheduledAt && data.scheduledAt.getTime() !== existing.scheduledAt.getTime()) {
-          await createActivity(tx, existing.leadId, 'FOLLOW_UP_RESCHEDULED', 'Follow-up rescheduled');
+        const scheduledChanged = data.scheduledAt
+          && data.scheduledAt.getTime() !== existing.scheduledAt.getTime();
+        const noteChanged = data.note !== undefined && data.note !== existing.note;
+        if (scheduledChanged || noteChanged) {
+          const changes = [
+            scheduledChanged
+              ? `from ${existing.scheduledAt.toISOString()} to ${data.scheduledAt!.toISOString()}`
+              : undefined,
+            noteChanged ? 'note changed' : undefined
+          ].filter(Boolean).join('; ');
+          await createActivity(
+            tx,
+            existing.leadId,
+            'FOLLOW_UP_RESCHEDULED',
+            `Follow-up rescheduled${changes ? ` (${changes})` : ''}`
+          );
         }
         return followUp;
       });

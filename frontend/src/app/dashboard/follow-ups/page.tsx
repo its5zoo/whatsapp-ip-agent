@@ -11,18 +11,19 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function FollowUpCard({ followUp, onAction, onReschedule }: { followUp: FollowUp; onAction: (id: string, action: 'complete' | 'cancel') => void; onReschedule: (id: string, scheduledAt: string) => void }) {
+function FollowUpCard({ followUp, onAction, onReschedule }: { followUp: FollowUp; onAction: (id: string, action: 'complete' | 'cancel') => void; onReschedule: (id: string, scheduledAt: string, note: string) => void }) {
   const [date, setDate] = useState(followUp.scheduledAt.slice(0, 16));
+  const [note, setNote] = useState(followUp.note);
   return <article className="follow-up-card">
     <div className="follow-up-card-header">
       <div><strong>{followUp.lead.name || 'Unnamed lead'}</strong><small>{followUp.lead.organization || 'No organization'}</small></div>
       <span className={`status-pill follow-up-${followUp.status.toLowerCase()}`}>{followUp.status === 'PENDING' ? 'Pending' : followUp.status === 'COMPLETED' ? 'Completed' : 'Cancelled'}</span>
     </div>
     <p className="follow-up-date">{formatDate(followUp.scheduledAt)}</p>
-    <p className="follow-up-note">{followUp.note}</p>
+    <textarea className="follow-up-note" aria-label={`Note for ${followUp.lead.name || 'follow-up'}`} value={note} onChange={event => setNote(event.target.value)} />
     {followUp.status === 'PENDING' && <div className="follow-up-actions">
       <input aria-label={`Reschedule ${followUp.lead.name || 'follow-up'}`} type="datetime-local" value={date} onChange={event => setDate(event.target.value)} />
-      <button className="button subtle" onClick={() => onReschedule(followUp.id, new Date(date).toISOString())}>Reschedule</button>
+      <button className="button subtle" disabled={!date || !note.trim()} onClick={() => onReschedule(followUp.id, new Date(date).toISOString(), note.trim())}>Save changes</button>
       <button className="button subtle" onClick={() => onAction(followUp.id, 'complete')}>Mark complete</button>
       <button className="button subtle" onClick={() => onAction(followUp.id, 'cancel')}>Cancel</button>
     </div>}
@@ -68,7 +69,7 @@ export default function FollowUpsPage() {
   const groups = useMemo(() => {
     const now = Date.now();
     return {
-      today: followUps.filter(item => item.status === 'PENDING' && new Date(item.scheduledAt).toDateString() === new Date().toDateString()),
+      today: followUps.filter(item => item.status === 'PENDING' && new Date(item.scheduledAt).toDateString() === new Date().toDateString() && new Date(item.scheduledAt).getTime() >= now),
       upcoming: followUps.filter(item => item.status === 'PENDING' && new Date(item.scheduledAt).getTime() >= now && new Date(item.scheduledAt).toDateString() !== new Date().toDateString()),
       overdue: followUps.filter(item => item.status === 'PENDING' && new Date(item.scheduledAt).getTime() < now),
       completed: followUps.filter(item => item.status === 'COMPLETED' || item.status === 'CANCELLED')
@@ -101,11 +102,11 @@ export default function FollowUpsPage() {
     }
   };
 
-  const reschedule = async (id: string, nextDate: string) => {
+  const reschedule = async (id: string, nextDate: string, note: string) => {
     try {
       const data = await fetchApi(`/admin/follow-ups/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ scheduledAt: nextDate })
+        body: JSON.stringify({ scheduledAt: nextDate, note })
       });
       setFollowUps(current => current.map(item => item.id === id ? data.followUp : item));
       await load();

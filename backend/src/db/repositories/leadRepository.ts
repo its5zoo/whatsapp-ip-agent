@@ -16,18 +16,16 @@ export interface LeadCreateInput {
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
 export class LeadRepository {
-  async upsertFromConversation(
+  async createFromConversation(
     conversationId: string,
     leadData: LeadCreateInput,
     db: DatabaseClient = prisma
   ): Promise<Lead> {
-    return db.lead.upsert({
-      where: { conversationId },
-      create: {
+    return db.lead.create({
+      data: {
         conversationId,
         ...leadData
-      },
-      update: leadData
+      }
     });
   }
 
@@ -35,8 +33,19 @@ export class LeadRepository {
     conversationId: string,
     db: DatabaseClient = prisma
   ): Promise<Lead | null> {
-    return db.lead.findUnique({
-      where: { conversationId }
+    return db.lead.findFirst({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  async listByConversationId(
+    conversationId: string,
+    db: DatabaseClient = prisma
+  ): Promise<Lead[]> {
+    return db.lead.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' }
     });
   }
 }

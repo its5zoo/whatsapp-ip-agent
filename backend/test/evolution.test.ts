@@ -13,8 +13,9 @@ import {
   setWebhookProcessingObserver,
   waitForWebhookProcessing
 } from '../src/routes/whatsapp';
+import { waitFor } from './testUtils';
 
-describe('Evolution webhook', { concurrency: false }, () => {
+describe('Evolution webhook', { concurrency: 1 }, () => {
   let app: FastifyInstance;
   let originalEnv: typeof env;
   let originalConsoleError: typeof console.error;
@@ -38,6 +39,7 @@ describe('Evolution webhook', { concurrency: false }, () => {
   });
 
   beforeEach(async () => {
+    await whatsappDeliveryService.stop();
     await prisma.processedWhatsappMessage.deleteMany({});
     await prisma.whatsappOutboundMessage.deleteMany({});
     await prisma.lead.deleteMany({});
@@ -50,16 +52,13 @@ describe('Evolution webhook', { concurrency: false }, () => {
     mock.method(app.log, 'error', () => {});
     mock.method(app.log, 'warn', () => {});
     mock.method(console, 'error', () => {});
+    whatsappDeliveryService.start(createWhatsAppProvider('meta'));
   });
 
   afterEach(async () => {
     await waitForWebhookProcessing();
     await whatsappDeliveryService.stop();
     mock.restoreAll();
-  });
-
-  beforeEach(() => {
-    whatsappDeliveryService.start(createWhatsAppProvider('meta'));
   });
 
   after(async () => {
@@ -105,7 +104,6 @@ describe('Evolution webhook', { concurrency: false }, () => {
       processing = promise;
     });
     try {
-      whatsappDeliveryService.start(createWhatsAppProvider('meta'));
       const response = await post(body, secret);
       if (processing) {
         await processing;
@@ -169,6 +167,13 @@ describe('Evolution webhook', { concurrency: false }, () => {
 
     const response = await postAndWaitForProcessing(largePayload);
     assert.strictEqual(response.statusCode, 200);
+    await waitFor(async () => {
+      const message = await prisma.whatsappOutboundMessage.findUnique({
+        where: { inboundMessageId: 'evolution-large-body-1' },
+        select: { status: true }
+      });
+      return message?.status === 'sent';
+    });
     const outbound = await prisma.whatsappOutboundMessage.findUnique({
       where: { inboundMessageId: 'evolution-large-body-1' }
     });
@@ -264,6 +269,13 @@ describe('Evolution webhook', { concurrency: false }, () => {
       where: { messageId: 'evolution-image-1' }
     });
     assert.ok(dedup);
+    await waitFor(async () => {
+      const message = await prisma.whatsappOutboundMessage.findUnique({
+        where: { inboundMessageId: 'evolution-image-1' },
+        select: { status: true }
+      });
+      return message?.status === 'sent';
+    });
     const outbound = await prisma.whatsappOutboundMessage.findUnique({
       where: { inboundMessageId: 'evolution-image-1' }
     });

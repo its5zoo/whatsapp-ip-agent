@@ -94,14 +94,14 @@ describe('Database and Service Layer Integration', () => {
     // Check conversation is completed
     const conv = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } },
-      include: { lead: true }
+      include: { leads: true }
     });
 
     assert.strictEqual(conv!.isCompleted, true);
     assert.strictEqual(conv!.currentQuestionId, null);
     
     // Check lead created
-    const lead = conv!.lead;
+    const lead = conv!.leads[0];
     assert.ok(lead);
     assert.strictEqual(lead.name, 'John');
     assert.strictEqual(lead.organization, 'Acme');
@@ -132,9 +132,9 @@ describe('Database and Service Layer Integration', () => {
 
     const conversation = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'whatsapp', externalUserId: userId } },
-      include: { lead: true }
+      include: { leads: true }
     });
-    assert.strictEqual(conversation?.lead?.mobile, '15551112222');
+    assert.strictEqual(conversation?.leads[0]?.mobile, '15551112222');
     assert.strictEqual((conversation?.data as any)?.shared_mobile, '15551112222');
   });
 
@@ -150,16 +150,16 @@ describe('Database and Service Layer Integration', () => {
     assert.strictEqual(conversation.isCompleted, false);
   });
 
-  test('8. Repeated Lead upsert does not duplicate', async () => {
+  test('8. A conversation can create independent enquiries', async () => {
     const beforeCount = await prisma.lead.count();
 
     const conv = await prisma.conversation.findUnique({
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } }
     });
 
-    // Manually trigger upsert again
+    // Manually create a second enquiry for the same conversation.
     const { leadRepository } = require('../src/db/repositories/leadRepository');
-    await leadRepository.upsertFromConversation(conv!.id, {
+    const secondLead = await leadRepository.createFromConversation(conv!.id, {
       name: 'John Updated',
       organization: 'Acme',
       email: 'john@acme.com',
@@ -172,13 +172,10 @@ describe('Database and Service Layer Integration', () => {
     });
 
     const afterCount = await prisma.lead.count();
-    assert.strictEqual(beforeCount, afterCount);
+    assert.strictEqual(beforeCount + 1, afterCount);
 
-    const lead = await prisma.lead.findUnique({
-      where: { conversationId: conv!.id }
-    });
-    assert.strictEqual(lead!.name, 'John Updated');
-    assert.strictEqual(lead!.status, 'NEW');
+    assert.strictEqual(secondLead.name, 'John Updated');
+    assert.strictEqual(await prisma.lead.count({ where: { conversationId: conv!.id } }), 2);
   });
 
   test('8a. Completed conversation repairs a Lead after transient persistence failure', async () => {
@@ -199,14 +196,14 @@ describe('Database and Service Layer Integration', () => {
         isCompleted: false
       }
     });
-    const originalUpsert = leadRepository.upsertFromConversation.bind(leadRepository);
+    const originalCreate = leadRepository.createFromConversation.bind(leadRepository);
     let shouldFail = true;
-    mock.method(leadRepository, 'upsertFromConversation', async (...args) => {
+    mock.method(leadRepository, 'createFromConversation', async (...args) => {
       if (shouldFail) {
         shouldFail = false;
         throw new Error('temporary lead persistence failure');
       }
-      return originalUpsert(...args);
+      return originalCreate(...args);
     });
 
     await assert.rejects(
@@ -218,11 +215,12 @@ describe('Database and Service Layer Integration', () => {
       where: { id: conversation.id }
     });
     assert.strictEqual(failedConversation?.isCompleted, false);
-    assert.strictEqual(await prisma.lead.findUnique({ where: { conversationId: conversation.id } }), null);
+    assert.strictEqual(await prisma.lead.findFirst({ where: { conversationId: conversation.id } }), null);
 
     await conversationService.handleMessage('simulator', externalUserId, '3');
-    const recoveredLead = await prisma.lead.findUnique({
-      where: { conversationId: conversation.id }
+    const recoveredLead = await prisma.lead.findFirst({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: 'desc' }
     });
     assert.strictEqual(recoveredLead?.email, 'recovery@example.com');
     mock.restoreAll();
@@ -285,10 +283,10 @@ describe('Database and Service Layer Integration', () => {
 
     const completed = await prisma.conversation.findUnique({
       where: { id: conversation.id },
-      include: { lead: true }
+      include: { leads: true }
     });
     assert.strictEqual(completed?.isCompleted, true);
-    assert.ok(completed?.lead);
+    assert.ok(completed?.leads[0]);
     assert.strictEqual(await prisma.lead.count({ where: { conversationId: conversation.id } }), 1);
   });
 
@@ -315,8 +313,9 @@ Would you like to create a new enquiry?
 1. Yes – Start a new enquiry
 2. No – Keep my existing enquiry`);
 
-    const leadBeforeRestart = await prisma.lead.findUnique({
-      where: { conversationId: convBefore!.id }
+    const leadBeforeRestart = await prisma.lead.findFirst({
+      where: { conversationId: convBefore!.id },
+      orderBy: { createdAt: 'desc' }
     });
     const res = await conversationService.handleMessage('simulator', 'user2', '2');
     assert.strictEqual(res, 'Your existing enquiry will be kept. Our team can help with it if needed.');
@@ -325,8 +324,9 @@ Would you like to create a new enquiry?
       where: { channel_externalUserId: { channel: 'simulator', externalUserId: 'user2' } }
     });
     assert.strictEqual(kept!.isCompleted, true);
-    const leadAfterKeep = await prisma.lead.findUnique({
-      where: { conversationId: convBefore!.id }
+    const leadAfterKeep = await prisma.lead.findFirst({
+      where: { conversationId: convBefore!.id },
+      orderBy: { createdAt: 'desc' }
     });
     assert.deepStrictEqual(leadAfterKeep, leadBeforeRestart);
 

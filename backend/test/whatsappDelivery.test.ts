@@ -4,6 +4,7 @@ import prisma from '../src/db/prisma';
 import { conversationService } from '../src/services/conversationService';
 import { leadRepository } from '../src/db/repositories/leadRepository';
 import { WhatsappDeliveryService } from '../src/services/whatsappDeliveryService';
+import { whatsappOutboundMessageRepository } from '../src/db/repositories/whatsappOutboundMessageRepository';
 import type { WhatsAppProvider } from '../src/whatsapp/providers/types';
 import { waitFor } from './testUtils';
 
@@ -76,7 +77,7 @@ describe('WhatsApp outbound delivery', { concurrency: 1 }, () => {
         isCompleted: false
       }
     });
-    mock.method(leadRepository, 'upsertFromConversation', async () => {
+    mock.method(leadRepository, 'createFromConversation', async () => {
       throw new Error('temporary lead failure');
     });
 
@@ -114,6 +115,35 @@ describe('WhatsApp outbound delivery', { concurrency: 1 }, () => {
     });
     assert.strictEqual(record?.status, 'sent');
     assert.strictEqual(calls, 1);
+  });
+
+  test('immediately-created outbound messages are eligible for claim', async () => {
+    await whatsappOutboundMessageRepository.create({
+      inboundMessageId: 'outbox-immediate-claim',
+      waId: 'outbox-user-immediate',
+      text: 'send now'
+    });
+
+    const claimed = await whatsappOutboundMessageRepository.claim('outbox-immediate-claim');
+
+    assert.strictEqual(claimed?.status, 'sending');
+    assert.strictEqual(claimed?.attempts, 1);
+  });
+
+  test('future outbound messages are not claimed early', async () => {
+    await prisma.whatsappOutboundMessage.create({
+      data: {
+        inboundMessageId: 'outbox-future-claim',
+        waId: 'outbox-user-future',
+        text: 'send later',
+        status: 'pending',
+        nextAttemptAt: new Date(Date.now() + 60_000)
+      }
+    });
+
+    const claimed = await whatsappOutboundMessageRepository.claim('outbox-future-claim');
+
+    assert.strictEqual(claimed, null);
   });
 
   test('retryable and unknown outcomes are scheduled for retry', async () => {

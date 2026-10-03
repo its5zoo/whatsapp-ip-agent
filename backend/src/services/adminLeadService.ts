@@ -7,6 +7,11 @@ export interface LeadFilter {
   limit?: number;
   flowType?: string;
   search?: string;
+  status?: AdminLeadStatus;
+  city?: string;
+  source?: 'whatsapp' | 'simulator';
+  dateFrom?: string;
+  dateTo?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
@@ -74,6 +79,21 @@ export class AdminLeadService {
     if (filter.flowType) {
       where.flowType = filter.flowType;
     }
+    if (filter.status) {
+      where.status = filter.status;
+    }
+    if (filter.city) {
+      where.city = { contains: filter.city, mode: 'insensitive' };
+    }
+    if (filter.source) {
+      where.conversation = { channel: filter.source };
+    }
+    if (filter.dateFrom || filter.dateTo) {
+      where.createdAt = {
+        ...(filter.dateFrom ? { gte: new Date(filter.dateFrom) } : {}),
+        ...(filter.dateTo ? { lt: new Date(filter.dateTo) } : {})
+      };
+    }
     if (filter.search) {
       where.OR = [
         { name: { contains: filter.search, mode: 'insensitive' } },
@@ -91,7 +111,7 @@ export class AdminLeadService {
     const [leads, total] = await Promise.all([
       prisma.lead.findMany({
         where,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: [{ [sortBy]: sortOrder }, { createdAt: 'desc' }],
         skip,
         take: limit,
         select: {
@@ -137,7 +157,22 @@ export class AdminLeadService {
         flowType: true,
         status: true,
         answers: true,
-        createdAt: true
+        createdAt: true,
+        conversation: {
+          select: {
+            leads: {
+              where: { id: { not: id } },
+              orderBy: { createdAt: 'desc' },
+              select: {
+                id: true,
+                name: true,
+                flowType: true,
+                status: true,
+                createdAt: true
+              }
+            }
+          }
+        }
       }
     });
   }

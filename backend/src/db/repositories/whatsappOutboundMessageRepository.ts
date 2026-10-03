@@ -21,7 +21,8 @@ export class WhatsappOutboundMessageRepository {
     return db.whatsappOutboundMessage.create({
       data: {
         ...input,
-        status: 'pending'
+        status: 'pending',
+        nextAttemptAt: new Date(0)
       }
     });
   }

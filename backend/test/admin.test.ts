@@ -557,6 +557,11 @@ test.describe('Admin API', () => {
     });
     assert.strictEqual(rescheduled.statusCode, 200);
     assert.strictEqual(JSON.parse(rescheduled.payload).followUp.note, 'Send revised proposal');
+    const rescheduledActivity = await prisma.activity.findFirst({
+      where: { leadId: lead.id, type: 'FOLLOW_UP_RESCHEDULED' },
+      orderBy: { createdAt: 'desc' }
+    });
+    assert.ok(rescheduledActivity?.description.includes('note changed'));
 
     const completed = await app.inject({
       method: 'POST',
