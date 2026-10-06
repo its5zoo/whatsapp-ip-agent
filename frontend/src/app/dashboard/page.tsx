@@ -69,26 +69,12 @@ export default function Dashboard() {
   }, [load]);
 
   const [timeRange, setTimeRange] = useState('current_month');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target && !target.closest('.dropdown-container')) {
-        setDropdownOpen(false);
-      }
-    }
-    if (dropdownOpen) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [dropdownOpen]);
 
   const timeRanges = [
-    { id: 'current_month', label: 'This Month' },
-    { id: 'last_30_days', label: 'Last 30 Days' },
-    { id: 'last_7_days', label: 'Last 7 Days' },
-    { id: 'all_time', label: 'All Time' }
+    { id: 'current_month', label: 'This Month', shortLabel: 'Month' },
+    { id: 'last_30_days', label: 'Last 30 Days', shortLabel: '30D' },
+    { id: 'last_7_days', label: 'Last 7 Days', shortLabel: '7D' },
+    { id: 'all_time', label: 'All Time', shortLabel: 'All' }
   ];
 
   const statusCounts = statusLeads.reduce<Record<string, number>>((counts, lead) => {
@@ -218,43 +204,23 @@ export default function Dashboard() {
           <p className="page-subtitle">A clear view of the enquiries that need your team today.</p>
         </div>
         <div className="header-actions">
-          <div className="dropdown-container">
-            <button
-              type="button"
-              className="dropdown-trigger-btn"
-              onClick={() => setDropdownOpen(open => !open)}
-              aria-expanded={dropdownOpen}
-            >
-              <svg className="dropdown-cal-icon" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-              </svg>
-              <span>{timeRanges.find(r => r.id === timeRange)?.label || 'This Month'}</span>
-              <svg className={`chevron-icon ${dropdownOpen ? 'open' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-            {dropdownOpen && (
-              <div className="dropdown-menu">
-                {timeRanges.map(range => (
-                  <button
-                    key={range.id}
-                    type="button"
-                    className={`dropdown-item ${timeRange === range.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setTimeRange(range.id);
-                      setDropdownOpen(false);
-                    }}
-                  >
-                    <span>{range.label}</span>
-                    {timeRange === range.id && (
-                      <svg className="dropdown-check-icon" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="time-toggle-group" role="tablist" aria-label="Select timeframe">
+            {timeRanges.map(range => {
+              const isActive = timeRange === range.id;
+              return (
+                <button
+                  key={range.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`time-toggle-btn ${isActive ? 'active' : ''}`}
+                  onClick={() => setTimeRange(range.id)}
+                >
+                  <span className="toggle-label-full">{range.label}</span>
+                  <span className="toggle-label-short">{range.shortLabel}</span>
+                </button>
+              );
+            })}
           </div>
           <Link href="/dashboard/leads" className="button primary view-leads-btn">
             <span>View all leads</span>
