@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchApi } from '@/lib/api';
+import { fetchApi, getApiErrorMessage } from '@/lib/api';
 import { FollowUp, Lead, LeadsResponse } from '@/types';
 
 function formatDate(value: string) {
@@ -47,8 +47,8 @@ export default function FollowUpsPage() {
     try {
       const data = await fetchApi('/admin/follow-ups');
       setFollowUps(data.followUps || []);
-    } catch {
-      setError('We could not load follow-ups. Please try again.');
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'We could not load follow-ups. Please try again.'));
     } finally { setLoading(false); }
   }, []);
 
@@ -59,8 +59,8 @@ export default function FollowUpsPage() {
         const data: LeadsResponse = await fetchApi('/admin/leads?page=1&limit=100');
         setLeads(data.leads);
         if (data.leads[0]) setLeadId(data.leads[0].id);
-      } catch {
-        setFormError('Leads could not be loaded, so a follow-up cannot be created yet.');
+      } catch (error) {
+        setFormError(getApiErrorMessage(error, 'Leads could not be loaded, so a follow-up cannot be created yet.'));
       } finally { setFormLoading(false); }
     };
     void loadLeads();
@@ -87,8 +87,8 @@ export default function FollowUpsPage() {
       await load();
       setScheduledAt('');
       setNote('');
-    } catch {
-      setFormError('We could not create the follow-up. Check the details and try again.');
+    } catch (error) {
+      setFormError(getApiErrorMessage(error, 'We could not create the follow-up. Check the details and try again.'));
     }
   };
 
@@ -97,8 +97,8 @@ export default function FollowUpsPage() {
       const data = await fetchApi(`/admin/follow-ups/${id}/${actionName}`, { method: 'POST' });
       setFollowUps(current => current.map(item => item.id === id ? data.followUp : item));
       await load();
-    } catch {
-      setError('The follow-up could not be updated. Please try again.');
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'The follow-up could not be updated. Please try again.'));
     }
   };
 
@@ -110,8 +110,8 @@ export default function FollowUpsPage() {
       });
       setFollowUps(current => current.map(item => item.id === id ? data.followUp : item));
       await load();
-    } catch {
-      setError('The follow-up could not be rescheduled. Please try again.');
+    } catch (error) {
+      setError(getApiErrorMessage(error, 'The follow-up could not be rescheduled. Please try again.'));
     }
   };
 

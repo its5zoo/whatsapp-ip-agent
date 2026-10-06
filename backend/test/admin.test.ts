@@ -520,6 +520,48 @@ test.describe('Admin API', () => {
     assert.strictEqual(overdue.statusCode, 201);
     const overdueFollowUp = JSON.parse(overdue.payload).followUp;
 
+    const unauthenticatedUpdate = await app.inject({
+      method: 'PATCH',
+      url: `/admin/follow-ups/${upcomingFollowUp.id}`,
+      payload: { note: 'Unauthorized update' }
+    });
+    assert.strictEqual(unauthenticatedUpdate.statusCode, 401);
+    const unauthenticatedComplete = await app.inject({
+      method: 'POST',
+      url: `/admin/follow-ups/${upcomingFollowUp.id}/complete`
+    });
+    assert.strictEqual(unauthenticatedComplete.statusCode, 401);
+    const unauthenticatedCancel = await app.inject({
+      method: 'POST',
+      url: `/admin/follow-ups/${overdueFollowUp.id}/cancel`
+    });
+    assert.strictEqual(unauthenticatedCancel.statusCode, 401);
+
+    const missingFollowUpId = '00000000-0000-4000-8000-000000000000';
+    for (const id of ['not-a-uuid', missingFollowUpId]) {
+      const missingUpdate = await app.inject({
+        method: 'PATCH',
+        url: `/admin/follow-ups/${id}`,
+        headers: { cookie: validCookie },
+        payload: { note: 'Missing follow-up' }
+      });
+      assert.strictEqual(missingUpdate.statusCode, 404);
+
+      const missingComplete = await app.inject({
+        method: 'POST',
+        url: `/admin/follow-ups/${id}/complete`,
+        headers: { cookie: validCookie }
+      });
+      assert.strictEqual(missingComplete.statusCode, 404);
+
+      const missingCancel = await app.inject({
+        method: 'POST',
+        url: `/admin/follow-ups/${id}/cancel`,
+        headers: { cookie: validCookie }
+      });
+      assert.strictEqual(missingCancel.statusCode, 404);
+    }
+
     const list = await app.inject({
       method: 'GET',
       url: '/admin/follow-ups',
@@ -589,6 +631,8 @@ test.describe('Admin API', () => {
 
     const persisted = await prisma.followUp.findMany({ where: { leadId: lead.id } });
     assert.strictEqual(persisted.length, 2);
+    assert.strictEqual((await prisma.followUp.findUnique({ where: { id: upcomingFollowUp.id } }))?.status, 'COMPLETED');
+    assert.strictEqual((await prisma.followUp.findUnique({ where: { id: overdueFollowUp.id } }))?.status, 'CANCELLED');
     assert.strictEqual((await prisma.lead.findUnique({ where: { id: lead.id } }))?.status, 'NEW');
     const followUpActivities = await prisma.activity.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: 'asc' } });
     assert.deepStrictEqual(followUpActivities.map(activity => activity.type), [
