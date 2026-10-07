@@ -109,22 +109,6 @@ export default function DateTimePicker({
     }
   };
 
-  // Quick Presets
-  const applyPreset = (daysToAdd: number, defaultHour = 18, defaultMin = 0) => {
-    const target = new Date();
-    target.setDate(target.getDate() + daysToAdd);
-    setCurrentYear(target.getFullYear());
-    setCurrentMonth(target.getMonth());
-    setSelectedDay(target.getDate());
-
-    const period: 'AM' | 'PM' = defaultHour >= 12 ? 'PM' : 'AM';
-    const h12 = defaultHour % 12 === 0 ? 12 : defaultHour % 12;
-    setHour12(h12);
-    setMinute(defaultMin);
-    setAmpm(period);
-
-    emitDate(target.getFullYear(), target.getMonth(), target.getDate(), h12, defaultMin, period);
-  };
 
   // Month navigation
   const prevMonth = () => {
@@ -209,21 +193,6 @@ export default function DateTimePicker({
       {/* Floating Modern Popover */}
       {isOpen && (
         <div className="dt-popover" role="dialog" aria-label="Date and time picker">
-          {/* Quick Presets */}
-          <div className="dt-presets-row">
-            <button type="button" className="dt-preset-btn" onClick={() => applyPreset(0, 18, 0)}>
-              Today 6 PM
-            </button>
-            <button type="button" className="dt-preset-btn" onClick={() => applyPreset(1, 11, 0)}>
-              Tomorrow 11 AM
-            </button>
-            <button type="button" className="dt-preset-btn" onClick={() => applyPreset(3, 15, 0)}>
-              In 3 Days
-            </button>
-            <button type="button" className="dt-preset-btn" onClick={() => applyPreset(7, 12, 0)}>
-              Next Week
-            </button>
-          </div>
 
           {/* Month Header */}
           <div className="dt-month-header">
@@ -328,45 +297,6 @@ export default function DateTimePicker({
             </div>
           </div>
 
-          {/* Quick Common Times */}
-          <div className="dt-quick-times">
-            <button
-              type="button"
-              className="dt-quick-time-chip"
-              onClick={() => {
-                setHour12(10);
-                setMinute(0);
-                setAmpm('AM');
-                if (selectedDay) emitDate(currentYear, currentMonth, selectedDay, 10, 0, 'AM');
-              }}
-            >
-              10:00 AM
-            </button>
-            <button
-              type="button"
-              className="dt-quick-time-chip"
-              onClick={() => {
-                setHour12(2);
-                setMinute(30);
-                setAmpm('PM');
-                if (selectedDay) emitDate(currentYear, currentMonth, selectedDay, 2, 30, 'PM');
-              }}
-            >
-              02:30 PM
-            </button>
-            <button
-              type="button"
-              className="dt-quick-time-chip"
-              onClick={() => {
-                setHour12(6);
-                setMinute(0);
-                setAmpm('PM');
-                if (selectedDay) emitDate(currentYear, currentMonth, selectedDay, 6, 0, 'PM');
-              }}
-            >
-              06:00 PM
-            </button>
-          </div>
 
           {/* Footer */}
           <div className="dt-footer">
